@@ -149,6 +149,14 @@ namespace libtorrent {
 		// be a multiple of 16 kiB. If a piece size of 0 is specified, a
 		// piece_size will be calculated such that the torrent file is roughly 40 kB.
 		//
+		// The file_storage (``fs``) parameter defines the files, sizes and
+		// their properties for the torrent to be created. Set this up first,
+		// before passing it to the create_torrent constructor.
+		//
+		// .. warning::
+		// 	The file_storage and torrent_info objects must stay alive for the
+		// 	entire duration of the create_torrent object.
+		//
 		// If a ``pad_file_limit`` is specified (other than -1), any file larger than
 		// the specified number of bytes will be preceded by a pad file to align it
 		// with the start of a piece. The pad_file_limit is ignored unless the
@@ -296,7 +304,7 @@ namespace libtorrent {
 
 	private:
 
-		file_storage& m_files;
+		file_storage const& m_files;
 		// if m_info_dict is initialized, it is
 		// used instead of m_files to generate
 		// the info dictionary

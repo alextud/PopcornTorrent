@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2003-2018, Arvid Norberg
+Copyright (c) 2022, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,30 +30,31 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_VERSION_HPP_INCLUDED
-#define TORRENT_VERSION_HPP_INCLUDED
+#ifndef TORRENT_SET_TRAFFIC_CLASS_HPP
+#define TORRENT_SET_TRAFFIC_CLASS_HPP
 
-#include "libtorrent/aux_/export.hpp"
-
-#define LIBTORRENT_VERSION_MAJOR 1
-#define LIBTORRENT_VERSION_MINOR 2
-#define LIBTORRENT_VERSION_TINY 16
-
-// the format of this version is: MMmmtt
-// M = Major version, m = minor version, t = tiny version
-#define LIBTORRENT_VERSION_NUM ((LIBTORRENT_VERSION_MAJOR * 10000) + (LIBTORRENT_VERSION_MINOR * 100) + LIBTORRENT_VERSION_TINY)
-
-#define LIBTORRENT_VERSION "1.2.16.0"
-#define LIBTORRENT_REVISION "175c20a89"
+#include "libtorrent/error_code.hpp"
+#include "libtorrent/socket.hpp"
 
 namespace libtorrent {
+namespace aux {
 
-	// returns the libtorrent version as string form in this format:
-	// "<major>.<minor>.<tiny>.<tag>"
-	TORRENT_EXPORT char const* version();
+	template <typename Socket>
+	void set_traffic_class(Socket& s, int v, error_code& ec)
+	{
+#ifdef IP_DSCP_TRAFFIC_TYPE
+		s.set_option(dscp_traffic_type((v & 0xff) >> 2), ec);
+		if (!ec) return;
+		ec.clear();
+#endif
+#if defined IPV6_TCLASS
+		if (is_v6(s.local_endpoint(ec)))
+			s.set_option(traffic_class(v & 0xfc), ec);
+		else if (!ec)
+#endif
+			s.set_option(type_of_service(v & 0xfc), ec);
+	}
 
-}
-
-namespace lt = libtorrent;
+}}
 
 #endif

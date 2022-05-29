@@ -2871,6 +2871,34 @@ bool is_downloading_state(int const st)
 		};
 	}
 
+	void torrent::update_tracker_endpoints()
+	{
+		for (auto& ae : m_trackers)
+		{
+			// update the endpoint list by adding entries for new listen sockets
+			// and removing entries for non-existent ones
+			std::size_t valid_endpoints = 0;
+			m_ses.for_each_listen_socket([&](aux::listen_socket_handle const& s) {
+				if (s.is_ssl() != is_ssl_torrent())
+					return;
+				for (auto& aep : ae.endpoints)
+				{
+					if (aep.socket != s) continue;
+					std::swap(ae.endpoints[valid_endpoints], aep);
+					valid_endpoints++;
+					return;
+				}
+
+				ae.endpoints.emplace_back(s, bool(m_complete_sent));
+				std::swap(ae.endpoints[valid_endpoints], ae.endpoints.back());
+				valid_endpoints++;
+			});
+
+			TORRENT_ASSERT(valid_endpoints <= ae.endpoints.size());
+			ae.endpoints.erase(ae.endpoints.begin() + int(valid_endpoints), ae.endpoints.end());
+		}
+	}
+
 	void torrent::announce_with_tracker(std::uint8_t e)
 	{
 		TORRENT_ASSERT(is_single_thread());
@@ -3019,32 +3047,14 @@ bool is_downloading_state(int const st)
 				, int(m_trackers.size()));
 		}
 #endif
+
+		update_tracker_endpoints();
+
 		for (auto& ae : m_trackers)
 		{
 #ifndef TORRENT_DISABLE_LOGGING
 			++idx;
 #endif
-			// update the endpoint list by adding entries for new listen sockets
-			// and removing entries for non-existent ones
-			std::size_t valid_endpoints = 0;
-			m_ses.for_each_listen_socket([&](aux::listen_socket_handle const& s) {
-				if (s.is_ssl() != is_ssl_torrent())
-					return;
-				for (auto& aep : ae.endpoints)
-				{
-					if (aep.socket != s) continue;
-					std::swap(ae.endpoints[valid_endpoints], aep);
-					valid_endpoints++;
-					return;
-				}
-
-				ae.endpoints.emplace_back(s, bool(m_complete_sent));
-				std::swap(ae.endpoints[valid_endpoints], ae.endpoints.back());
-				valid_endpoints++;
-			});
-
-			TORRENT_ASSERT(valid_endpoints <= ae.endpoints.size());
-			ae.endpoints.erase(ae.endpoints.begin() + int(valid_endpoints), ae.endpoints.end());
 
 			// if trackerid is not specified for tracker use default one, probably set explicitly
 			req.trackerid = ae.trackerid.empty() ? m_trackerid : ae.trackerid;
@@ -3617,8 +3627,14 @@ bool is_downloading_state(int const st)
 			|| tracker_idx == -1);
 
 		if (is_paused()) return;
+#ifndef TORRENT_DISABLE_LOGGING
+		bool found_one = false;
+#endif
 		if (tracker_idx == -1)
 		{
+			// make sure we check for new endpoints from the listen sockets
+			update_tracker_endpoints();
+
 			for (auto& e : m_trackers)
 			{
 				for (auto& aep : e.endpoints)
@@ -3626,8 +3642,10 @@ bool is_downloading_state(int const st)
 					aep.next_announce = (flags & torrent_handle::ignore_min_interval)
 						? time_point_cast<seconds32>(t) + seconds32(1)
 						: std::max(time_point_cast<seconds32>(t), aep.min_announce) + seconds32(1);
-					aep.min_announce = aep.next_announce;
 					aep.triggered_manually = true;
+#ifndef TORRENT_DISABLE_LOGGING
+					found_one = true;
+#endif
 				}
 			}
 		}
@@ -3641,10 +3659,19 @@ bool is_downloading_state(int const st)
 				aep.next_announce = (flags & torrent_handle::ignore_min_interval)
 					? time_point_cast<seconds32>(t) + seconds32(1)
 					: std::max(time_point_cast<seconds32>(t), aep.min_announce) + seconds32(1);
-				aep.min_announce = aep.next_announce;
 				aep.triggered_manually = true;
+#ifndef TORRENT_DISABLE_LOGGING
+				found_one = true;
+#endif
 			}
 		}
+
+#ifndef TORRENT_DISABLE_LOGGING
+		if (!found_one)
+		{
+			debug_log("*** found no tracker endpoints to announce");
+		}
+#endif
 		update_tracker_timer(aux::time_now32());
 	}
 
@@ -9146,12 +9173,35 @@ bool is_downloading_state(int const st)
 				break;
 		}
 
-		if (next_announce <= now) next_announce = now;
+#ifndef TORRENT_DISABLE_LOGGING
+		bool before_now = false;
+		bool none_eligible = false;
+#endif
+		if (next_announce <= now)
+		{
+			next_announce = now;
+#ifndef TORRENT_DISABLE_LOGGING
+			before_now = true;
+#endif
+		}
+		else if (next_announce == time_point32::max())
+		{
+			// if no tracker can be announced to, check again in a minute
+			next_announce = now + minutes32(1);
+#ifndef TORRENT_DISABLE_LOGGING
+			none_eligible = true;
+#endif
+		}
 
 #ifndef TORRENT_DISABLE_LOGGING
-		debug_log("*** update tracker timer: next_announce < now %d"
-			" m_waiting_tracker: %d next_announce_in: %d"
-			, next_announce <= now, m_waiting_tracker
+		debug_log("*** update tracker timer: "
+			"before_now: %d "
+			"none_eligible: %d "
+			"m_waiting_tracker: %d "
+			"next_announce_in: %d"
+			, before_now
+			, none_eligible
+			, m_waiting_tracker
 			, int(total_seconds(next_announce - now)));
 #endif
 
@@ -11247,11 +11297,9 @@ bool is_downloading_state(int const st)
 					debug_log("*** increment tracker fail count [ep: %s url: %s %d]"
 						, print_endpoint(aep->local_endpoint).c_str(), r.url.c_str(), aep->fails);
 #endif
-					// don't try to announce from this endpoint again
-					if (ec == boost::system::errc::address_family_not_supported
-						|| ec == boost::system::errc::host_unreachable
-						|| ec == lt::errors::announce_skipped)
+					if (ec == boost::system::errc::address_family_not_supported)
 					{
+						// don't try to announce from this endpoint again
 						aep->enabled = false;
 #ifndef TORRENT_DISABLE_LOGGING
 						debug_log("*** disabling endpoint [ep: %s url: %s ]"

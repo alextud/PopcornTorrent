@@ -15,7 +15,7 @@ clean() {
 
 download() {
 	curl -L -o ${LIBTORRENT_TARBALL} \
-		"https://github.com/arvidn/libtorrent/releases/download/v1.2.15/libtorrent-rasterbar-1.2.15.tar.gz"
+		"https://github.com/arvidn/libtorrent/releases/download/v1.2.16/libtorrent-rasterbar-1.2.16.tar.gz"
 }
 
 extract() {
