@@ -24,6 +24,8 @@
     long long firstPiece;
     long long endPiece;
     std::mutex mtx;
+    int MIN_PIECES; //they are calculated by divind the 5% of a torrent file size with the size of a torrent piece / selected file in case we load a multi movie torrent
+    int selectedFileIndex;
 }
 
 @property (nonatomic, strong, nullable) dispatch_queue_t alertsQueue;

@@ -20,9 +20,6 @@
 #define LIBTORRENT_PRIORITY_SKIP 0
 #define LIBTORRENT_PRIORITY_MAXIMUM 7
 
-int MIN_PIECES = 0, selectedFileIndex = -1; //they are calculated by divind the 5% of a torrent file size with the size of a torrent piece / selected file in case we load a multi movie torrent
-bool shouldUserSelectFiles = FALSE;
-
 NSNotificationName const PTTorrentStatusDidChangeNotification = @"com.popcorntimetv.popcorntorrent.status.change";
 
 
@@ -42,6 +39,7 @@ using namespace libtorrent;
 - (instancetype)init {
     self = [super init];
     if (self) {
+        selectedFileIndex = -1;
         [self setupSession];
     }
     return self;
@@ -114,24 +112,11 @@ using namespace libtorrent;
     
 }
 
-- (void)startStreamingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink
-                                  progress:(PTTorrentStreamerProgress)progress
-                               readyToPlay:(PTTorrentStreamerReadyToPlay)readyToPlay
-                                   failure:(PTTorrentStreamerFailure)failure {
-    [self startStreamingFromFileOrMagnetLink:filePathOrMagnetLink
-                               directoryName:nil
-                                    progress:progress
-                                 readyToPlay:readyToPlay
-                                     failure:failure];
-    
-}
-
 - (void)startStreamingFromMultiTorrentFileOrMagnetLink:(NSString *)filePathOrMagnetLink
                                   progress:(PTTorrentStreamerProgress)progress
                                readyToPlay:(PTTorrentStreamerReadyToPlay)readyToPlay
                                    failure:(PTTorrentStreamerFailure)failure
                                     selectFileToStream:(PTTorrentStreamerSelection)callback{
-    shouldUserSelectFiles = TRUE;
     self.selectionBlock = callback;
     [self startStreamingFromFileOrMagnetLink:filePathOrMagnetLink
                                directoryName:nil
@@ -195,7 +180,7 @@ using namespace libtorrent;
             if (ec) {
                 error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-1 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithCString:ec.message().c_str() encoding:NSUTF8StringEncoding]}];
             }
-            MIN_PIECES = ((tp.ti->file_at([self indexOfLargestFileInTorrentWithTorrentInfo:tp.ti]).size*0.03)/tp.ti->piece_length());
+            MIN_PIECES = ((tp.ti->file_at([self selectedFileIndexInTorrentWithTorrentInfo:tp.ti]).size*0.03)/tp.ti->piece_length());
         } else {
             error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-2 userInfo:@{NSLocalizedDescriptionKey: [NSString localizedStringWithFormat:@"File doesn't exist at path: %@".localizedString, filePath]}];
         }
@@ -300,7 +285,7 @@ using namespace libtorrent;
         int totalTorrentPieces = ti->num_pieces();
         
         //find the torrent piece corresponding to the requested piece of the movie
-        peer_request request = ti->map_file(selectedFileIndex != -1 ? selectedFileIndex : [self indexOfLargestFileInTorrent:ths[i]], range.location, (int)range.length);
+        peer_request request = ti->map_file([self selectedFileIndexInTorrent:ths[i]], range.location, (int)range.length);
         
         //set first and last pieces
         int startPiece = request.piece;
@@ -360,8 +345,6 @@ using namespace libtorrent;
     self.progressBlock = nil;
     self.readyToPlayBlock = nil;
     self.failureBlock = nil;
-    self.selectionBlock =  nil;
-    selectedFileIndex = -1;
     
     if (self.mediaServer.isRunning)[self.mediaServer stop];
     [self.mediaServer removeAllHandlers];
@@ -477,13 +460,15 @@ using namespace libtorrent;
     _status = th.status();
     
     std::shared_ptr<const torrent_info> ti = th.torrent_file();
-    int file_index = selectedFileIndex != -1 ? selectedFileIndex : [self indexOfLargestFileInTorrent:th];
+    int file_index = [self selectedFileIndexInTorrent:th];
     file_entry fe = ti->file_at(file_index);
     std::string path = fe.path;
     _fileName = [NSString stringWithCString:path.c_str() encoding:NSUTF8StringEncoding];
     
     if (self.readyToPlayBlock) {
-        [self startWebServerAndPlay];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self startWebServerAndPlay];
+        });
     }
 }
 
@@ -537,35 +522,31 @@ using namespace libtorrent;
 }
 
 
-- (int)indexOfLargestFileInTorrent:(torrent_handle)th {
+- (int)selectedFileIndexInTorrent:(torrent_handle)th {
     std::shared_ptr<const torrent_info> ti = th.torrent_file();
-    return [self indexOfLargestFileInTorrentWithTorrentInfo:ti];
+    return [self selectedFileIndexInTorrentWithTorrentInfo:ti];
 }
 
-- (int)indexOfLargestFileInTorrentWithTorrentInfo:(std::shared_ptr<const torrent_info>)ti {
-    if (shouldUserSelectFiles == TRUE){
-        shouldUserSelectFiles = FALSE;
-        if (selectedFileIndex != -1)return selectedFileIndex;
-        auto files = ti->files();
-        NSMutableArray* file_names = [[NSMutableArray alloc]init];
-        for (int i=0; i<ti->num_files();i++)[file_names addObject:[NSString stringWithFormat:@"%s",files.file_name(i).to_string().c_str()]];
-        selectedFileIndex = self.selectionBlock([file_names copy]);
+- (int)selectedFileIndexInTorrentWithTorrentInfo:(std::shared_ptr<const torrent_info>)ti {
+    if (selectedFileIndex != -1) {
         return selectedFileIndex;
     }
+
+
     int files_count = ti->num_files();
-    if (files_count > 1) {
-        int64_t largest_size = -1;
-        int largest_file_index = -1;
-        for (int i = 0; i < files_count; i++) {
-            file_entry fe = ti->file_at(i);
-            if (fe.size > largest_size) {
-                largest_size = fe.size;
-                largest_file_index = i;
-            }
+    if (files_count > 1) {    
+        auto files = ti->files();
+        NSMutableArray* file_names = [[NSMutableArray alloc] init];
+        NSMutableArray* file_sizes = [[NSMutableArray alloc] init];
+        for (int i=0; i<ti->num_files(); i++) {
+            [file_names addObject:[NSString stringWithFormat:@"%s", files.file_name(i).to_string().c_str()]];
+            [file_sizes addObject:[NSNumber numberWithLong: ti->file_at(i).size]];
         }
-        selectedFileIndex = largest_file_index;
-        return largest_file_index;
+
+        selectedFileIndex = self.selectionBlock([file_names copy], [file_sizes copy]);
+        return selectedFileIndex;
     }
+
     return 0;
 }
 
@@ -578,15 +559,7 @@ using namespace libtorrent;
     NSDictionary *results = [savePathURL resourceValuesForKeys:@[NSURLVolumeAvailableCapacityKey] error:nil];
     NSNumber *availableSpace = results[NSURLVolumeAvailableCapacityKey];//get available space on device
     
-    if (_requiredSpace > availableSpace.longLongValue) {
-        NSString *description = [NSString localizedStringWithFormat:@"There is not enough space to download the torrent. Please clear at least %@ and try again.".localizedString, self.fileSize.stringValue];
-        NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-4 userInfo:@{NSLocalizedDescriptionKey: description}];
-        if (_failureBlock) _failureBlock(error);
-        [self cancelStreamingAndDeleteData:NO];
-        return;
-    }
-    
-    int file_index = [self indexOfLargestFileInTorrent:th];
+    int file_index = [self selectedFileIndexInTorrent:th];
     
     std::vector<int> file_priorities = th.file_priorities();
     std::fill(file_priorities.begin(), file_priorities.end(), LIBTORRENT_PRIORITY_SKIP);
@@ -601,6 +574,15 @@ using namespace libtorrent;
     }
     
     int64_t file_size = ti->file_at(file_index).size;
+    if (file_size > availableSpace.longLongValue) {
+        PTSize *fileSize = [PTSize sizeWithLongLong: file_size];
+        NSString *description = [NSString localizedStringWithFormat:@"There is not enough space to download the torrent. Please clear at least %@ and try again.".localizedString, fileSize.stringValue];
+        NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-4 userInfo:@{NSLocalizedDescriptionKey: description}];
+        if (_failureBlock) _failureBlock(error);
+        [self cancelStreamingAndDeleteData:NO];
+        return;
+    }
+
     int last_piece = ti->map_file(file_index, file_size - 1, 0).piece;
     for (int i = 0; i < 10; i++) {
         required_pieces.push_back(last_piece - i);
