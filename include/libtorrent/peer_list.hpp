@@ -1,6 +1,11 @@
 /*
 
-Copyright (c) 2003-2018, Arvid Norberg
+Copyright (c) 2003-2005, 2007-2009, 2011-2012, 2014-2020, Arvid Norberg
+Copyright (c) 2004, Magnus Jonsson
+Copyright (c) 2009, Daniel Wallin
+Copyright (c) 2015, Mikhail Titov
+Copyright (c) 2016-2017, Alden Torres
+Copyright (c) 2016, Steven Siloti
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -43,7 +48,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/piece_picker.hpp"
 #include "libtorrent/socket.hpp"
 #include "libtorrent/address.hpp"
-#include "libtorrent/invariant_check.hpp"
+#include "libtorrent/aux_/invariant_check.hpp"
 #include "libtorrent/ip_voter.hpp"
 #include "libtorrent/config.hpp"
 #include "libtorrent/debug.hpp"
@@ -115,8 +120,7 @@ namespace libtorrent {
 		// this is called once for every torrent_peer we get from
 		// the tracker, pex, lsd or dht.
 		torrent_peer* add_peer(tcp::endpoint const& remote
-			, peer_source_flags_t source, pex_flags_t flags
-			, torrent_state* state);
+			, peer_source_flags_t, pex_flags_t, torrent_state*);
 
 		// false means duplicate connection
 		bool update_peer_port(int port, torrent_peer* p

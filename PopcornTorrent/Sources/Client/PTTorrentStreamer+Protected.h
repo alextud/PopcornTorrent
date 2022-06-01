@@ -20,9 +20,9 @@
     long long _requiredSpace;
     long long _totalDownloaded;
     NSString *_savePath;
-    std::vector<int> required_pieces;
-    long long firstPiece;
-    long long endPiece;
+    std::vector<libtorrent::piece_index_t> required_pieces;
+    libtorrent::piece_index_t firstPiece;
+    libtorrent::piece_index_t endPiece;
     std::mutex mtx;
     int MIN_PIECES; //they are calculated by divind the 5% of a torrent file size with the size of a torrent piece / selected file in case we load a multi movie torrent
     int selectedFileIndex;

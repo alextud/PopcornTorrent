@@ -1,6 +1,9 @@
 /*
 
-Copyright (c) 2003-2018, Arvid Norberg
+Copyright (c) 2004, 2006-2007, 2009-2011, 2013, 2015-2020, Arvid Norberg
+Copyright (c) 2015, Mikhail Titov
+Copyright (c) 2016-2017, Andrei Kurushin
+Copyright (c) 2016-2017, Alden Torres
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -40,14 +43,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #ifdef TORRENT_WINDOWS
 #include "libtorrent/aux_/windows.hpp"
-#endif
-
-#if TORRENT_USE_ICONV
-#include <iconv.h>
-#include <locale.h>
-#endif
-
-#if TORRENT_USE_LOCALE
+#else
 #include <clocale>
 #endif
 
@@ -193,13 +189,6 @@ namespace libtorrent {
 		std::replace(path.begin(), path.end(), '\\', '/');
 	}
 
-#ifdef TORRENT_WINDOWS
-	void convert_path_to_windows(std::string& path)
-	{
-		std::replace(path.begin(), path.end(), '/', '\\');
-	}
-#endif
-
 	// TODO: 2 this should probably be moved into string_util.cpp
 	std::string read_until(char const*& str, char const delim, char const* end)
 	{
@@ -254,34 +243,6 @@ namespace libtorrent {
 
 		return msg;
 	}
-
-#if TORRENT_ABI_VERSION == 1
-	std::string resolve_file_url(std::string const& url)
-	{
-		TORRENT_ASSERT(url.substr(0, 7) == "file://");
-		// first, strip the file:// part.
-		// On windows, we have
-		// to strip the first / as well
-		std::size_t num_to_strip = 7;
-#ifdef TORRENT_WINDOWS
-		if (url[7] == '/' || url[7] == '\\') ++num_to_strip;
-#endif
-		std::string ret = url.substr(num_to_strip);
-
-		// we also need to URL-decode it
-		error_code ec;
-		std::string unescaped = unescape_string(ret, ec);
-		if (ec) unescaped = ret;
-
-		// on windows, we need to convert forward slashes
-		// to backslashes
-#ifdef TORRENT_WINDOWS
-		convert_path_to_windows(unescaped);
-#endif
-
-		return unescaped;
-	}
-#endif
 
 	std::string base64encode(const std::string& s)
 	{
@@ -497,68 +458,9 @@ namespace libtorrent {
 	}
 #endif
 
-#if TORRENT_USE_ICONV
-namespace {
+#if !TORRENT_NATIVE_UTF8
 
-	// this is a helper function to deduce the type of the second argument to
-	// the iconv() function.
-
-	template <typename Input>
-	size_t call_iconv(size_t (&fun)(iconv_t, Input**, size_t*, char**, size_t*)
-		, iconv_t cd, char const** in, size_t* insize, char** out, size_t* outsize)
-	{
-		return fun(cd, const_cast<Input**>(in), insize, out, outsize);
-	}
-
-	std::string iconv_convert_impl(std::string const& s, iconv_t h)
-	{
-		std::string ret;
-		size_t insize = s.size();
-		size_t outsize = insize * 4;
-		ret.resize(outsize);
-		char const* in = s.c_str();
-		char* out = &ret[0];
-		// posix has a weird iconv() signature. implementations
-		// differ on the type of the second parameter. We use a helper template
-		// to deduce what we need to cast to.
-		std::size_t const retval = call_iconv(::iconv, h, &in, &insize, &out, &outsize);
-		if (retval == size_t(-1)) return s;
-		// if this string has an invalid utf-8 sequence in it, don't touch it
-		if (insize != 0) return s;
-		// not sure why this would happen, but it seems to be possible
-		if (outsize > s.size() * 4) return s;
-		// outsize is the number of bytes unused of the out-buffer
-		TORRENT_ASSERT(ret.size() >= outsize);
-		ret.resize(ret.size() - outsize);
-		return ret;
-	}
-} // anonymous namespace
-
-	std::string convert_to_native(std::string const& s)
-	{
-		static std::mutex iconv_mutex;
-		// only one thread can use this handle at a time
-		std::lock_guard<std::mutex> l(iconv_mutex);
-
-		// the empty string represents the local dependent encoding
-		static iconv_t iconv_handle = ::iconv_open("", "UTF-8");
-		if (iconv_handle == iconv_t(-1)) return s;
-		return iconv_convert_impl(s, iconv_handle);
-	}
-
-	std::string convert_from_native(std::string const& s)
-	{
-		static std::mutex iconv_mutex;
-		// only one thread can use this handle at a time
-		std::lock_guard<std::mutex> l(iconv_mutex);
-
-		// the empty string represents the local dependent encoding
-		static iconv_t iconv_handle = ::iconv_open("UTF-8", "");
-		if (iconv_handle == iconv_t(-1)) return s;
-		return iconv_convert_impl(s, iconv_handle);
-	}
-
-#elif defined TORRENT_WINDOWS
+#if defined TORRENT_WINDOWS
 
 namespace {
 
@@ -593,7 +495,7 @@ namespace {
 		return convert_impl(s, CP_ACP, CP_UTF8);
 	}
 
-#elif TORRENT_USE_LOCALE
+#else
 
 namespace {
 
@@ -638,11 +540,14 @@ namespace {
 			ptr = ptr.substr(std::size_t(len));
 
 			char out[10];
-			int const size = std::wcrtomb(out, static_cast<wchar_t>(codepoint), &state);
-			if (size < 0)
+			std::size_t const size = std::wcrtomb(out, static_cast<wchar_t>(codepoint), &state);
+			if (size == static_cast<std::size_t>(-1))
+			{
 				ret += '.';
+				state = std::mbstate_t{};
+			}
 			else
-				for (int i = 0; i < size; ++i)
+				for (std::size_t i = 0; i < size; ++i)
 					ret += out[i];
 		}
 		return ret;
@@ -658,18 +563,24 @@ namespace {
 		while (!ptr.empty())
 		{
 			wchar_t codepoint;
-			int const size = std::mbrtowc(&codepoint, ptr.data(), ptr.size(), &state);
-			if (size < 0)
+			std::size_t const size = std::mbrtowc(&codepoint, ptr.data(), ptr.size(), &state);
+			if (size == static_cast<std::size_t>(-1))
+			{
 				ret.push_back('.');
+				state = std::mbstate_t{};
+				ptr = ptr.substr(1);
+			}
 			else
+			{
 				append_utf8_codepoint(ret, static_cast<std::int32_t>(codepoint));
-
-			ptr = ptr.substr(std::size_t(size < 1 ? 1 : size));
+				ptr = ptr.substr(size < 1 ? 1 : size);
+			}
 		}
 
 		return ret;
 	}
 
+#endif
 #endif
 
 }

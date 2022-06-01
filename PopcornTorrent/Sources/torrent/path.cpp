@@ -1,6 +1,10 @@
 /*
 
-Copyright (c) 2003-2016, Arvid Norberg
+Copyright (c) 2017, Steven Siloti
+Copyright (c) 2017-2020, Arvid Norberg
+Copyright (c) 2017-2019, Alden Torres
+Copyright (c) 2020, Tiger Wang
+Copyright (c) 2020, Kacper Michajłow
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -44,11 +48,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #pragma clang diagnostic ignored "-Wreserved-id-macro"
 #endif
 
-// these defines are just in case the system we're on needs them for 64 bit file
-// support
-#define _FILE_OFFSET_BITS 64
-#define _LARGE_FILES 1
-
 // on mingw this is necessary to enable 64-bit time_t, specifically used for
 // the stat struct. Without this, modification times returned by stat may be
 // incorrect and consistently fail resume data
@@ -69,7 +68,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/config.hpp"
 #include "libtorrent/aux_/alloca.hpp"
 #include "libtorrent/aux_/path.hpp"
-#include "libtorrent/file.hpp" // for directory
+#include "libtorrent/aux_/directory.hpp"
 #include "libtorrent/string_util.hpp"
 #include <cstring>
 
@@ -103,18 +102,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <cerrno>
 #include <dirent.h>
-
-#ifdef TORRENT_LINUX
-// linux specifics
-
 #include <sys/ioctl.h>
-
-#elif defined __APPLE__ && defined __MACH__ && MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
-// mac specifics
-
-#include <copyfile.h>
-
-#endif
 
 #endif // posix part
 
@@ -162,11 +150,50 @@ namespace {
 		// convert to seconds
 		return time_t(ft / 10000000 - posix_time_offset);
 	}
+
+	void fill_file_status(file_status & s, LARGE_INTEGER file_size, DWORD file_attributes, FILETIME creation_time, FILETIME last_access, FILETIME last_write)
+	{
+		s.file_size = file_size.QuadPart;
+		s.ctime = file_time_to_posix(creation_time);
+		s.atime = file_time_to_posix(last_access);
+		s.mtime = file_time_to_posix(last_write);
+
+		s.mode = (file_attributes & FILE_ATTRIBUTE_DIRECTORY)
+			? file_status::directory
+			: (file_attributes & FILE_ATTRIBUTE_DEVICE)
+			? file_status::character_special : file_status::regular_file;
+	}
+
+	void fill_file_status(file_status & s, DWORD file_size_low, DWORD file_size_high, DWORD file_attributes, FILETIME creation_time, FILETIME last_access, FILETIME last_write)
+	{
+		LARGE_INTEGER file_size;
+		file_size.HighPart = static_cast<LONG>(file_size_high);
+		file_size.LowPart = file_size_low;
+
+		fill_file_status(s, file_size, file_attributes, creation_time, last_access, last_write);
+	}
+
+#ifdef TORRENT_WINRT
+	FILETIME to_file_time(LARGE_INTEGER i)
+	{
+		FILETIME time;
+		time.dwHighDateTime = i.HighPart;
+		time.dwLowDateTime = i.LowPart;
+
+		return time;
+	}
+
+	void fill_file_status(file_status & s, LARGE_INTEGER file_size, DWORD file_attributes, LARGE_INTEGER creation_time, LARGE_INTEGER last_access, LARGE_INTEGER last_write)
+	{
+		fill_file_status(s, file_size, file_attributes, to_file_time(creation_time), to_file_time(last_access), to_file_time(last_write));
+	}
+#endif
 #endif
 } // anonymous namespace
 
 	native_path_string convert_to_native_path_string(std::string const& path)
 	{
+#ifdef TORRENT_WINDOWS
 #if TORRENT_USE_UNC_PATHS
 		// UNC paths must be absolute
 		// network paths are already UNC paths
@@ -176,6 +203,9 @@ namespace {
 		std::replace(prepared_path.begin(), prepared_path.end(), '/', '\\');
 
 		return convert_to_wstring(prepared_path);
+#else
+		return convert_to_wstring(path);
+#endif
 #else // TORRENT_WINDOWS
 		return convert_to_native(path);
 #endif
@@ -199,6 +229,45 @@ namespace {
 		// Fallback to GetFileInformationByHandle for symlinks
 		if (!(flags & dont_follow_links) && (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
 		{
+#ifdef TORRENT_WINRT
+
+			CREATEFILE2_EXTENDED_PARAMETERS Extended
+			{
+				sizeof(CREATEFILE2_EXTENDED_PARAMETERS),
+				0, // no file attributes
+				FILE_FLAG_BACKUP_SEMANTICS // in order to open a directory, we need the FILE_FLAG_BACKUP_SEMANTICS
+			};
+
+			const auto h = CreateFile2(f.c_str(), 0, FILE_SHARE_DELETE | FILE_SHARE_READ
+				| FILE_SHARE_WRITE, OPEN_EXISTING, &Extended);
+
+			if (h == INVALID_HANDLE_VALUE)
+			{
+				ec.assign(GetLastError(), system_category());
+				TORRENT_ASSERT(ec);
+				return;
+			}
+
+			FILE_BASIC_INFO Basic;
+			FILE_STANDARD_INFO Standard;
+
+			if (
+				!GetFileInformationByHandleEx(h, FILE_INFO_BY_HANDLE_CLASS::FileBasicInfo, &Basic, sizeof(FILE_BASIC_INFO)) ||
+				!GetFileInformationByHandleEx(h, FILE_INFO_BY_HANDLE_CLASS::FileStandardInfo, &Standard, sizeof(FILE_STANDARD_INFO))
+			)
+			{
+				ec.assign(GetLastError(), system_category());
+				TORRENT_ASSERT(ec);
+				CloseHandle(h);
+				return;
+			}
+			CloseHandle(h);
+
+			fill_file_status(*s, Standard.EndOfFile, Basic.FileAttributes, Basic.CreationTime, Basic.LastAccessTime, Basic.LastWriteTime);
+			return;
+
+#else
+
 			// in order to open a directory, we need the FILE_FLAG_BACKUP_SEMANTICS
 			HANDLE h = CreateFileW(f.c_str(), 0, FILE_SHARE_DELETE | FILE_SHARE_READ
 				| FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
@@ -219,23 +288,14 @@ namespace {
 			}
 			CloseHandle(h);
 
-			data.dwFileAttributes = handle_data.dwFileAttributes;
-			data.ftCreationTime = handle_data.ftCreationTime;
-			data.ftLastAccessTime = handle_data.ftLastAccessTime;
-			data.ftLastWriteTime = handle_data.ftLastWriteTime;
-			data.nFileSizeHigh = handle_data.nFileSizeHigh;
-			data.nFileSizeLow = handle_data.nFileSizeLow;
+			fill_file_status(*s, handle_data.nFileSizeLow, handle_data.nFileSizeHigh, handle_data.dwFileAttributes, handle_data.ftCreationTime, handle_data.ftLastAccessTime, handle_data.ftLastWriteTime);
+			return;
+
+#endif
 		}
 
-		s->file_size = (std::uint64_t(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
-		s->ctime = file_time_to_posix(data.ftCreationTime);
-		s->atime = file_time_to_posix(data.ftLastAccessTime);
-		s->mtime = file_time_to_posix(data.ftLastWriteTime);
+		fill_file_status(*s, data.nFileSizeLow, data.nFileSizeHigh, data.dwFileAttributes, data.ftCreationTime, data.ftLastAccessTime, data.ftLastWriteTime);
 
-		s->mode = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-			? file_status::directory
-			: (data.dwFileAttributes & FILE_ATTRIBUTE_DEVICE)
-			? file_status::character_special : file_status::regular_file;
 #else
 
 		// posix version
@@ -251,6 +311,11 @@ namespace {
 			ec.assign(errno, system_category());
 			return;
 		}
+
+		// make sure the _FILE_OFFSET_BITS define worked
+		// on this platform. It's supposed to make file
+		// related functions support 64-bit offsets.
+		static_assert(sizeof(ret.st_size) >= 8, "64 bit file operations are required");
 
 		s->file_size = ret.st_size;
 		s->atime = std::uint64_t(ret.st_atime);
@@ -274,6 +339,8 @@ namespace {
 
 		native_path_string f1 = convert_to_native_path_string(inf);
 		native_path_string f2 = convert_to_native_path_string(newf);
+
+		if (f1 == f2) return;
 
 #if defined TORRENT_WINDOWS
 #define RenameFunction_ ::_wrename
@@ -317,7 +384,7 @@ namespace {
 
 		native_path_string n = convert_to_native_path_string(f);
 #ifdef TORRENT_WINDOWS
-		if (CreateDirectoryW(n.c_str(), 0) == 0
+		if (CreateDirectoryW(n.c_str(), nullptr) == 0
 			&& GetLastError() != ERROR_ALREADY_EXISTS)
 			ec.assign(GetLastError(), system_category());
 #else
@@ -333,6 +400,7 @@ namespace {
 		native_path_string n_exist = convert_to_native_path_string(file);
 		native_path_string n_link = convert_to_native_path_string(link);
 #ifdef TORRENT_WINDOWS
+#ifndef TORRENT_WINRT
 
 		BOOL ret = CreateHardLinkW(n_link.c_str(), n_exist.c_str(), nullptr);
 		if (ret)
@@ -351,6 +419,7 @@ namespace {
 		}
 
 		// fall back to making a copy
+#endif
 #else
 		// assume posix's link() function exists
 		int ret = ::link(n_exist.c_str(), n_link.c_str());
@@ -364,7 +433,13 @@ namespace {
 		// most errors are passed through, except for the ones that indicate that
 		// hard links are not supported and require a copy.
 		// TODO: 2 test this on a FAT volume to see what error we get!
-		if (errno != EMLINK && errno != EXDEV)
+		if (errno != EMLINK
+			&& errno != EXDEV
+#ifdef TORRENT_BEOS
+			// haiku returns EPERM when the filesystem doesn't support hard link
+			&& errno != EPERM
+#endif
+			)
 		{
 			// some error happened, report up to the caller
 			ec.assign(errno, system_category());
@@ -390,88 +465,6 @@ namespace {
 		return false;
 	}
 
-	void recursive_copy(std::string const& old_path, std::string const& new_path, error_code& ec)
-	{
-		TORRENT_ASSERT(!ec);
-		if (is_directory(old_path, ec))
-		{
-			create_directory(new_path, ec);
-			if (ec) return;
-			for (directory i(old_path, ec); !i.done(); i.next(ec))
-			{
-				std::string f = i.file();
-				if (f == ".." || f == ".") continue;
-				recursive_copy(combine_path(old_path, f), combine_path(new_path, f), ec);
-				if (ec) return;
-			}
-		}
-		else if (!ec)
-		{
-			copy_file(old_path, new_path, ec);
-		}
-	}
-
-	void copy_file(std::string const& inf, std::string const& newf, error_code& ec)
-	{
-		ec.clear();
-		native_path_string f1 = convert_to_native_path_string(inf);
-		native_path_string f2 = convert_to_native_path_string(newf);
-
-#ifdef TORRENT_WINDOWS
-
-		if (CopyFileW(f1.c_str(), f2.c_str(), false) == 0)
-			ec.assign(GetLastError(), system_category());
-
-#elif defined __APPLE__ && defined __MACH__ && MAC_OS_X_VERSION_MIN_REQUIRED >= 1050
-		// this only works on 10.5
-		copyfile_state_t state = copyfile_state_alloc();
-		if (copyfile(f1.c_str(), f2.c_str(), state, COPYFILE_ALL) < 0)
-			ec.assign(errno, system_category());
-		copyfile_state_free(state);
-#else
-		int const infd = ::open(f1.c_str(), O_RDONLY);
-		if (infd < 0)
-		{
-			ec.assign(errno, system_category());
-			return;
-		}
-
-		// rely on default umask to filter x and w permissions
-		// for group and others
-		int const permissions = S_IRUSR | S_IWUSR
-			| S_IRGRP | S_IWGRP
-			| S_IROTH | S_IWOTH;
-
-		int const outfd = ::open(f2.c_str(), O_WRONLY | O_CREAT, permissions);
-		if (outfd < 0)
-		{
-			close(infd);
-			ec.assign(errno, system_category());
-			return;
-		}
-		char buffer[4096];
-		for (;;)
-		{
-			int const num_read = int(read(infd, buffer, sizeof(buffer)));
-			if (num_read == 0) break;
-			if (num_read < 0)
-			{
-				ec.assign(errno, system_category());
-				break;
-			}
-			int const num_written = int(write(outfd, buffer, std::size_t(num_read)));
-			if (num_written < num_read)
-			{
-				ec.assign(errno, system_category());
-				break;
-			}
-			if (num_read < int(sizeof(buffer))) break;
-		}
-		close(infd);
-		close(outfd);
-#endif // TORRENT_WINDOWS
-	}
-
 	void move_file(std::string const& inf, std::string const& newf, error_code& ec)
 	{
 		ec.clear();
@@ -493,7 +486,7 @@ namespace {
 	{
 		for (int i = int(f.size()) - 1; i >= 0; --i)
 		{
-			std::size_t const idx = std::size_t(i);
+			auto const idx = static_cast<std::size_t>(i);
 			if (f[idx] == '/') break;
 #ifdef TORRENT_WINDOWS
 			if (f[idx] == '\\') break;
@@ -551,7 +544,7 @@ namespace {
 		return false;
 	}
 
-	bool compare_path(std::string const& lhs, std::string const& rhs)
+	bool path_equal(std::string const& lhs, std::string const& rhs)
 	{
 		std::string::size_type const lhs_size = !lhs.empty()
 			&& (lhs[lhs.size()-1] == '/'
@@ -567,6 +560,29 @@ namespace {
 #endif
 			) ? rhs.size() - 1 : rhs.size();
 		return lhs.compare(0, lhs_size, rhs, 0, rhs_size) == 0;
+	}
+
+	// <0: lhs < rhs
+	//  0: lhs == rhs
+	// >0: lhs > rhs
+	int path_compare(string_view const lhs, string_view const lfile
+		, string_view const rhs, string_view const rfile)
+	{
+		for (auto lhs_elems = lsplit_path(lhs), rhs_elems = lsplit_path(rhs);
+			!lhs_elems.first.empty() || !rhs_elems.first.empty();
+			lhs_elems = lsplit_path(lhs_elems.second), rhs_elems = lsplit_path(rhs_elems.second))
+		{
+			if (lhs_elems.first.empty() || rhs_elems.first.empty())
+			{
+				if (lhs_elems.first.empty()) lhs_elems.first = lfile;
+				if (rhs_elems.first.empty()) rhs_elems.first = rfile;
+				return lhs_elems.first.compare(rhs_elems.first);
+			}
+
+			int const ret = lhs_elems.first.compare(rhs_elems.first);
+			if (ret != 0) return ret;
+		}
+		return 0;
 	}
 
 	bool has_parent_path(std::string const& f)
@@ -617,7 +633,7 @@ namespace {
 		char const* sep = std::strrchr(first, '/');
 #if defined(TORRENT_WINDOWS) || defined(TORRENT_OS2)
 		char const* altsep = std::strrchr(first, '\\');
-		if (sep == 0 || altsep > sep) sep = altsep;
+		if (sep == nullptr || altsep > sep) sep = altsep;
 #endif
 		if (sep == nullptr) return f;
 
@@ -808,16 +824,6 @@ namespace {
 		return ret;
 	}
 #endif
-
-	std::int64_t file_size(std::string const& f)
-	{
-		error_code ec;
-		file_status s;
-		stat_file(f, &s, ec);
-		if (ec) return 0;
-		return s.file_size;
-	}
-
 	bool exists(std::string const& f, error_code& ec)
 	{
 		file_status s;
@@ -829,12 +835,6 @@ namespace {
 			return false;
 		}
 		return true;
-	}
-
-	bool exists(std::string const& f)
-	{
-		error_code ec;
-		return exists(f, ec);
 	}
 
 	void remove(std::string const& inf, error_code& ec)
@@ -879,7 +879,7 @@ namespace {
 
 		if (s.mode & file_status::directory)
 		{
-			for (directory i(f, ec); !i.done(); i.next(ec))
+			for (aux::directory i(f, ec); !i.done(); i.next(ec))
 			{
 				if (ec) return;
 				std::string p = i.file();

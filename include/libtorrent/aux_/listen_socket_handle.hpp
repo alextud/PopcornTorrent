@@ -1,6 +1,8 @@
 /*
 
 Copyright (c) 2017, Steven Siloti
+Copyright (c) 2018, Alden Torres
+Copyright (c) 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -53,6 +55,8 @@ namespace libtorrent { namespace aux {
 
 		listen_socket_handle(listen_socket_handle const& o) = default;
 		listen_socket_handle& operator=(listen_socket_handle const& o) = default;
+		listen_socket_handle(listen_socket_handle&& o) = default;
+		listen_socket_handle& operator=(listen_socket_handle&& o) = default;
 
 		explicit operator bool() const { return !m_sock.expired(); }
 

@@ -1,6 +1,9 @@
 /*
 
-Copyright (c) 2012-2018, Arvid Norberg
+Copyright (c) 2014-2020, Arvid Norberg
+Copyright (c) 2016-2017, Alden Torres
+Copyright (c) 2019, Steven Siloti
+Copyright (c) 2020, FranciscoPombal
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -243,13 +246,6 @@ namespace {
 		METRIC(ses, num_have_pieces)
 		METRIC(ses, num_total_pieces_added)
 
-#if TORRENT_ABI_VERSION == 1
-		// this counts the number of times a torrent has been
-		// evicted (only applies when dynamic-loading-of-torrent-files
-		// is enabled, which is deprecated).
-		METRIC(ses, torrent_evicted_counter)
-#endif
-
 		// the number of allowed unchoked peers
 		METRIC(ses, num_unchoke_slots)
 
@@ -299,6 +295,9 @@ namespace {
 		METRIC(ses, num_outgoing_pex)
 		METRIC(ses, num_outgoing_metadata)
 		METRIC(ses, num_outgoing_extended)
+		METRIC(ses, num_outgoing_hash_request)
+		METRIC(ses, num_outgoing_hashes)
+		METRIC(ses, num_outgoing_hash_reject)
 
 		// the number of wasted downloaded bytes by reason of the bytes being
 		// wasted.
@@ -330,27 +329,14 @@ namespace {
 		METRIC(picker, interesting_piece_picks)
 		METRIC(picker, hash_fail_piece_picks)
 
-		// These gauges indicate how many blocks are currently in use as dirty
-		// disk blocks (``write_cache_blocks``) and read cache blocks,
-		// respectively. deprecates ``cache_status::read_cache_size``.
-		// The sum of these gauges deprecates ``cache_status::cache_size``.
-		METRIC(disk, write_cache_blocks)
-		METRIC(disk, read_cache_blocks)
-
 		// the number of microseconds it takes from receiving a request from a
 		// peer until we're sending the response back on the socket.
 		METRIC(disk, request_latency)
 
-		// ``disk_blocks_in_use`` indicates how many disk blocks are currently in
-		// use, either as dirty blocks waiting to be written or blocks kept around
-		// in the hope that a peer will request it or in a peer send buffer. This
-		// gauge deprecates ``cache_status::total_used_buffers``.
-		METRIC(disk, pinned_blocks)
 		METRIC(disk, disk_blocks_in_use)
 
 		// ``queued_disk_jobs`` is the number of disk jobs currently queued,
-		// waiting to be executed by a disk thread. Deprecates
-		// ``cache_status::job_queue_length``.
+		// waiting to be executed by a disk thread.
 		METRIC(disk, queued_disk_jobs)
 		METRIC(disk, num_running_disk_jobs)
 		METRIC(disk, num_read_jobs)
@@ -368,30 +354,17 @@ namespace {
 		// is actually waiting for to be written (as opposed to
 		// bytes just hanging out in the cache)
 		METRIC(disk, queued_write_bytes)
-		METRIC(disk, arc_mru_size)
-		METRIC(disk, arc_mru_ghost_size)
-		METRIC(disk, arc_mfu_size)
-		METRIC(disk, arc_mfu_ghost_size)
-		METRIC(disk, arc_write_size)
-		METRIC(disk, arc_volatile_size)
 
 		// the number of blocks written and read from disk in total. A block is 16
-		// kiB. ``num_blocks_written`` and ``num_blocks_read`` deprecates
-		// ``cache_status::blocks_written`` and ``cache_status::blocks_read`` respectively.
+		// kiB. ``num_blocks_written`` and ``num_blocks_read``
 		METRIC(disk, num_blocks_written)
 		METRIC(disk, num_blocks_read)
 
 		// the total number of blocks run through SHA-1 hashing
 		METRIC(disk, num_blocks_hashed)
 
-		// the number of blocks read from the disk cache
-		// Deprecates ``cache_info::blocks_read_hit``.
-		METRIC(disk, num_blocks_cache_hits)
-
 		// the number of disk I/O operation for reads and writes. One disk
 		// operation may transfer more then one block.
-		// These counters deprecates ``cache_status::writes`` and
-		// ``cache_status::reads``.
 		METRIC(disk, num_write_ops)
 		METRIC(disk, num_read_ops)
 
@@ -421,7 +394,6 @@ namespace {
 		METRIC(disk, num_fenced_flush_piece)
 		METRIC(disk, num_fenced_flush_hashed)
 		METRIC(disk, num_fenced_flush_storage)
-		METRIC(disk, num_fenced_trim_cache)
 		METRIC(disk, num_fenced_file_priority)
 		METRIC(disk, num_fenced_load_torrent)
 		METRIC(disk, num_fenced_clear_piece)
@@ -495,19 +467,46 @@ namespace {
 		METRIC(dht, dht_invalid_get)
 		METRIC(dht, dht_invalid_sample_infohashes)
 
-		// uTP counters. Each counter represents the number of time each event
-		// has occurred.
+		// The number of times a lost packet has been interpreted as congestion,
+		// cutting the congestion window in half. Some lost packets are not
+		// interpreted as congestion, notably MTU-probes
 		METRIC(utp, utp_packet_loss)
+
+		// The number of timeouts experienced. This is when a connection doesn't
+		// hear back from the other end within a sliding average RTT + 2 average
+		// deviations from the mean (approximately). The actual time out is
+		// configurable and also depends on the state of the socket.
 		METRIC(utp, utp_timeout)
+
+		// The total number of packets sent and received
 		METRIC(utp, utp_packets_in)
 		METRIC(utp, utp_packets_out)
+
+		// The number of packets lost but re-sent by the fast-retransmit logic.
+		// This logic is triggered after 3 duplicate ACKs.
 		METRIC(utp, utp_fast_retransmit)
+
+		// The number of packets that were re-sent, for whatever reason
 		METRIC(utp, utp_packet_resend)
+
+		// The number of incoming packets where the delay samples were above
+		// and below the delay target, respectively. The delay target is
+		// configurable and is a parameter to the LEDBAT congestion control.
 		METRIC(utp, utp_samples_above_target)
 		METRIC(utp, utp_samples_below_target)
+
+		// The total number of packets carrying payload received and sent,
+		// respectively.
 		METRIC(utp, utp_payload_pkts_in)
 		METRIC(utp, utp_payload_pkts_out)
+
+		// The number of packets received that are not valid uTP packets (but
+		// were sufficiently similar to not be treated as DHT or UDP tracker
+		// packets).
 		METRIC(utp, utp_invalid_pkts_in)
+
+		// The number of duplicate payload packets received. This may happen if
+		// the outgoing ACK is lost.
 		METRIC(utp, utp_redundant_pkts_in)
 
 		// the number of uTP sockets in each respective state

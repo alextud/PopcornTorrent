@@ -1,6 +1,9 @@
 /*
 
-Copyright (c) 2007-2018, Arvid Norberg
+Copyright (c) 2007-2010, 2012, 2015-2020, Arvid Norberg
+Copyright (c) 2016-2017, 2019, Alden Torres
+Copyright (c) 2017, Pavel Pimenov
+Copyright (c) 2018, Steven Siloti
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -52,11 +55,11 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/assert.hpp"
 #include "libtorrent/enum_net.hpp"
 #include "libtorrent/socket_io.hpp"
-#include "libtorrent/io_service.hpp"
+#include "libtorrent/io_context.hpp"
 #include "libtorrent/aux_/time.hpp"
 #include "libtorrent/debug.hpp"
 #include "libtorrent/random.hpp"
-#include "libtorrent/broadcast_socket.hpp" // for is_local
+#include "libtorrent/aux_/ip_helpers.hpp" // for is_local
 #include "libtorrent/aux_/escape_string.hpp"
 #include "libtorrent/aux_/numeric_cast.hpp"
 
@@ -91,7 +94,7 @@ struct pcp_error_category final : boost::system::error_category
 	}
 	boost::system::error_condition default_error_condition(
 		int ev) const BOOST_SYSTEM_NOEXCEPT override
-	{ return boost::system::error_condition(ev, *this); }
+	{ return {ev, *this}; }
 };
 
 boost::system::error_category& pcp_category()
@@ -105,7 +108,7 @@ namespace errors
 	// hidden
 	boost::system::error_code make_error_code(pcp_errors e)
 	{
-		return boost::system::error_code(e, pcp_category());
+		return {e, pcp_category()};
 	}
 }
 
@@ -133,12 +136,15 @@ char const* natpmp::version_to_string(protocol_version version)
 using namespace aux;
 using namespace std::placeholders;
 
-natpmp::natpmp(io_service& ios
-	, aux::portmap_callback& cb)
+natpmp::natpmp(io_context& ios
+	, aux::portmap_callback& cb
+	, listen_socket_handle ls)
 	: m_callback(cb)
 	, m_socket(ios)
 	, m_send_timer(ios)
 	, m_refresh_timer(ios)
+	, m_ioc(ios)
+	, m_listen_handle(std::move(ls))
 {
 	// unfortunately async operations rely on the storage
 	// for this array not to be reallocated, by passing
@@ -157,7 +163,7 @@ void natpmp::start(ip_interface const& ip)
 	address const& local_address = ip.interface_address;
 
 	error_code ec;
-	auto const routes = enum_routes(get_io_service(m_socket), ec);
+	auto const routes = enum_routes(m_ioc, ec);
 	if (ec)
 	{
 #ifndef TORRENT_DISABLE_LOGGING
@@ -177,9 +183,8 @@ void natpmp::start(ip_interface const& ip)
 #ifndef TORRENT_DISABLE_LOGGING
 		if (should_log())
 		{
-			log("failed to find default route for \"%s\" %s: %s"
-				, ip.name, local_address.to_string().c_str()
-				, convert_from_native(ec.message()).c_str());
+			log("failed to find default route for \"%s\" %s"
+				, ip.name, local_address.to_string().c_str());
 		}
 #endif
 		disable(ec);
@@ -233,7 +238,7 @@ void natpmp::start(ip_interface const& ip)
 void natpmp::send_get_ip_address_request()
 {
 	TORRENT_ASSERT(is_single_thread());
-	using namespace libtorrent::detail;
+	using namespace libtorrent::aux;
 
 	// this opcode only exists in NAT-PMP
 	// PCP routers report the external IP in the response to a MAP operation
@@ -301,7 +306,7 @@ void natpmp::log(char const* fmt, ...) const
 	va_start(v, fmt);
 	std::vsnprintf(msg, sizeof(msg), fmt, v);
 	va_end(v);
-	m_callback.log_portmap(portmap_transport::natpmp, msg);
+	m_callback.log_portmap(portmap_transport::natpmp, msg, m_listen_handle);
 }
 #endif
 
@@ -317,7 +322,7 @@ void natpmp::disable(error_code const& ec)
 		i->protocol = portmap_protocol::none;
 		port_mapping_t const index(static_cast<int>(i - m_mappings.begin()));
 		m_callback.on_port_mapping(index, address(), 0, proto, ec
-			, portmap_transport::natpmp);
+			, portmap_transport::natpmp, m_listen_handle);
 	}
 	close_impl();
 }
@@ -389,8 +394,8 @@ void natpmp::try_next_mapping(port_mapping_t const i)
 	{
 		if (m_abort)
 		{
+			m_send_timer.cancel();
 			error_code ec;
-			m_send_timer.cancel(ec);
 			m_socket.close(ec);
 		}
 		return;
@@ -406,8 +411,8 @@ void natpmp::update_mapping(port_mapping_t const i)
 	{
 		if (m_abort)
 		{
+			m_send_timer.cancel();
 			error_code ec;
-			m_send_timer.cancel(ec);
 			m_socket.close(ec);
 		}
 		return;
@@ -438,7 +443,7 @@ void natpmp::update_mapping(port_mapping_t const i)
 void natpmp::send_map_request(port_mapping_t const i)
 {
 	TORRENT_ASSERT(is_single_thread());
-	using namespace libtorrent::detail;
+	using namespace libtorrent::aux;
 
 	TORRENT_ASSERT(m_currently_mapping == port_mapping_t{-1}
 		|| m_currently_mapping == i);
@@ -482,7 +487,7 @@ void natpmp::send_map_request(port_mapping_t const i)
 			return;
 		}
 		auto const local_bytes = local_addr.is_v4()
-			? address_v6::v4_mapped(local_addr.to_v4()).to_bytes()
+			? make_address_v6(v4_mapped, local_addr.to_v4()).to_bytes()
 			: local_addr.to_v6().to_bytes();
 		out = std::copy(local_bytes.begin(), local_bytes.end(), out);
 		out = std::copy(m.nonce.begin(), m.nonce.end(), out);
@@ -500,18 +505,18 @@ void natpmp::send_map_request(port_mapping_t const i)
 		if (!m.external_address.is_unspecified())
 		{
 			external_addr = m.external_address.is_v4()
-				? address_v6::v4_mapped(m.external_address.to_v4())
+				? make_address_v6(v4_mapped, m.external_address.to_v4())
 				: m.external_address.to_v6();
 		}
-		else if (is_local(local_addr))
+		else if (aux::is_local(local_addr))
 		{
 			external_addr = local_addr.is_v4()
-				? address_v6::v4_mapped(address_v4())
+				? make_address_v6(v4_mapped, address_v4())
 				: address_v6();
 		}
 		else if (local_addr.is_v4())
 		{
-			external_addr = address_v6::v4_mapped(local_addr.to_v4());
+			external_addr = make_address_v6(v4_mapped, local_addr.to_v4());
 		}
 		else
 		{
@@ -564,7 +569,7 @@ void natpmp::send_map_request(port_mapping_t const i)
 		ADD_OUTSTANDING_ASYNC("natpmp::resend_request");
 		// linear back-off instead of exponential
 		++m_retry_count;
-		m_send_timer.expires_from_now(milliseconds(250 * m_retry_count), ec);
+		m_send_timer.expires_after(milliseconds(250 * m_retry_count));
 		m_send_timer.async_wait(std::bind(&natpmp::on_resend_request, self(), i, _1));
 	}
 }
@@ -602,7 +607,7 @@ void natpmp::on_reply(error_code const& e
 
 	COMPLETE_ASYNC("natpmp::on_reply");
 
-	using namespace libtorrent::detail;
+	using namespace libtorrent::aux;
 	if (e)
 	{
 #ifndef TORRENT_DISABLE_LOGGING
@@ -639,8 +644,7 @@ void natpmp::on_reply(error_code const& e
 		return;
 	}
 
-	error_code ec;
-	m_send_timer.cancel(ec);
+	m_send_timer.cancel();
 
 	if (bytes_transferred < 4)
 	{
@@ -683,7 +687,8 @@ void natpmp::on_reply(error_code const& e
 		log("unsupported version");
 #endif
 		// ignore errors from local_endpoint
-		if (m_version == version_pcp && !is_v6(m_socket.local_endpoint(ec)))
+		error_code ec;
+		if (m_version == version_pcp && !aux::is_v6(m_socket.local_endpoint(ec)))
 		{
 			m_version = version_natpmp;
 			resend_request(m_currently_mapping);
@@ -754,7 +759,7 @@ void natpmp::on_reply(error_code const& e
 	{
 		external_addr = read_v6_address(in);
 		if (external_addr.to_v6().is_v4_mapped())
-			external_addr = external_addr.to_v6().to_v4();
+			external_addr = make_address_v4(v4_mapped, external_addr.to_v6());
 	}
 
 	if (version == version_natpmp)
@@ -820,19 +825,19 @@ void natpmp::on_reply(error_code const& e
 		m->expires = aux::time_now() + hours(2);
 		portmap_protocol const proto = m->protocol;
 		m_callback.on_port_mapping(port_mapping_t{index}, address(), 0, proto
-			, from_result_code(version, result), portmap_transport::natpmp);
+			, from_result_code(version, result), portmap_transport::natpmp, m_listen_handle);
 	}
 	else if (m->act == portmap_action::add)
 	{
 		portmap_protocol const proto = m->protocol;
 		address const ext_ip = version == version_pcp ? m->external_address : m_external_ip;
 		m_callback.on_port_mapping(port_mapping_t{index}, ext_ip, m->external_port, proto
-			, errors::pcp_success, portmap_transport::natpmp);
+			, errors::pcp_success, portmap_transport::natpmp, m_listen_handle);
 	}
 
 	m_currently_mapping = port_mapping_t{-1};
 	m->act = portmap_action::none;
-	m_send_timer.cancel(ec);
+	m_send_timer.cancel();
 	update_expiration_timer();
 	try_next_mapping(index);
 }
@@ -875,11 +880,10 @@ void natpmp::update_expiration_timer()
 		log("next expiration [ idx: %d ttl: %" PRId64 " ]"
 			, static_cast<int>(min_index), total_seconds(min_expire - aux::time_now()));
 #endif
-		error_code ec;
-		if (m_next_refresh >= port_mapping_t{}) m_refresh_timer.cancel(ec);
+		if (m_next_refresh >= port_mapping_t{}) m_refresh_timer.cancel();
 
 		ADD_OUTSTANDING_ASYNC("natpmp::mapping_expired");
-		m_refresh_timer.expires_from_now(min_expire - now, ec);
+		m_refresh_timer.expires_after(min_expire - now);
 		m_refresh_timer.async_wait(std::bind(&natpmp::mapping_expired, self(), _1, min_index));
 		m_next_refresh = min_index;
 	}
@@ -917,8 +921,7 @@ void natpmp::close_impl()
 		if (m.protocol == portmap_protocol::none) continue;
 		m.act = portmap_action::del;
 	}
-	error_code ec;
-	m_refresh_timer.cancel(ec);
+	m_refresh_timer.cancel();
 	m_currently_mapping = port_mapping_t{-1};
 	update_mapping(port_mapping_t{});
 }

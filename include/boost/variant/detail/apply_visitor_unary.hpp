@@ -4,7 +4,7 @@
 //-----------------------------------------------------------------------------
 //
 // Copyright (c) 2002-2003 Eric Friedman
-// Copyright (c) 2014-2021 Antony Polukhin
+// Copyright (c) 2014-2022 Antony Polukhin
 //
 // Distributed under the Boost Software License, Version 1.0. (See
 // accompanying file LICENSE_1_0.txt or copy at
@@ -96,8 +96,7 @@ struct result_multideduce1 {
     struct deduce_impl {
         typedef typename boost::mpl::next<It>::type next_t;
         typedef typename boost::mpl::deref<It>::type value_t;
-        typedef decltype(true ? boost::declval< Visitor& >()( boost::declval< copy_cv_ref_t< value_t, Variant > >() )
-                              : boost::declval< typename deduce_impl<next_t>::type >()) type;
+        typedef decltype(boost::declval< typename deduce_impl<next_t>::type >()) type;
     };
 
     template <class Dummy>

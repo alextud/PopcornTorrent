@@ -1,6 +1,7 @@
 /*
 
 Copyright (c) 2018, Arvid Norberg, Steven Siloti
+Copyright (c) 2018, 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,7 +43,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef STRICT
 #define STRICT
 #endif
-#include <windows.h>
+#include <Windows.h>
 
 #endif // TORRENT_WINDOWS_HPP_INCLUDED
 

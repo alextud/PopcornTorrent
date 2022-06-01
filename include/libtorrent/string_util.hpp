@@ -1,6 +1,9 @@
 /*
 
-Copyright (c) 2012-2018, Arvid Norberg
+Copyright (c) 2012, 2014-2020, Arvid Norberg
+Copyright (c) 2016, Steven Siloti
+Copyright (c) 2016, Alden Torres
+Copyright (c) 2017, Pavel Pimenov
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -136,6 +139,9 @@ namespace libtorrent {
 	// separator itself is a double quote.
 	TORRENT_EXTRA_EXPORT std::pair<string_view, string_view> split_string_quotes(
 		string_view last, char const sep);
+
+	// removes whitespaces at the beginning of the string, in-place
+	TORRENT_EXTRA_EXPORT void ltrim(std::string& s);
 
 #if TORRENT_USE_I2P
 

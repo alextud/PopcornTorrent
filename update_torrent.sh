@@ -15,7 +15,7 @@ clean() {
 
 download() {
 	curl -L -o ${LIBTORRENT_TARBALL} \
-		"https://github.com/arvidn/libtorrent/releases/download/v1.2.16/libtorrent-rasterbar-1.2.16.tar.gz"
+		"https://github.com/arvidn/libtorrent/releases/download/v2.0.6/libtorrent-rasterbar-2.0.6.tar.gz"
 }
 
 extract() {
@@ -24,7 +24,7 @@ extract() {
     rm -rf ${HEADERS_DIR} && mkdir -p ${HEADERS_DIR}
 	tar -xzf ${LIBTORRENT_TARBALL} --strip 1 -C ${BUILD_DIR}
     cp -r "${BUILD_DIR}/src" ${SRC_DIR}
-    cp -r "${BUILD_DIR}/ed25519/src" "${SRC_DIR}/ed25519"
+    cp -r "${BUILD_DIR}/deps/try_signal/" "${SRC_DIR}/"
     cp -r "${BUILD_DIR}/include/libtorrent" "${DIR}/include"
 }
 

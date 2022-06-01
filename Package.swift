@@ -11,14 +11,15 @@ let package = Package(
         .library(name: "PopcornTorrent", targets: ["PopcornTorrent"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/alextud/GCDWebServer", .branch("swift-package-manager"))
+        .package(url: "https://github.com/alextud/GCDWebServer", .branch("swift-package-manager")),
+        .package(url: "https://github.com/nferruzzi/openssl", .branch("main"))
     ],
     targets: [
         .target(
             name: "PopcornTorrent",
-            dependencies: ["GCDWebServer"],
+            dependencies: ["GCDWebServer", "openssl"],
             path: "PopcornTorrent/Sources",
-            exclude: ["torrent/Makefile.am", "torrent/Makefile.in"],
+            exclude: ["torrent/Jamfile", "torrent/LICENSE"],
             cxxSettings: [
                 .define("TARGET_OS_IOS", .when(platforms: [.iOS])),
                 .define("TARGET_OS_TV", .when(platforms: [.tvOS])),
@@ -26,6 +27,13 @@ let package = Package(
 //                .define("BOOST_ASIO_ENABLE_CANCELIO"),
                 .define("BOOST_ASIO_HASH_MAP_BUCKETS", to: "1021"),
 //                .define("BOOST_FILESYSTEM_VERSION", to: "3"),
+                .define("TORRENT_USE_OPENSSL"),
+                .define("TORRENT_USE_LIBCRYPTO"),
+                .define("TORRENT_SSL_PEERS"),
+//                .define("BOOST_NO_CXX14_DECLTYPE_AUTO"),
+                .define("TORRENT_ABI_VERSION", to: "3"),
+                
+                
                 .headerSearchPath("../../include/"),
             ]
         ),
@@ -40,5 +48,5 @@ let package = Package(
                    )
     ],
     cLanguageStandard: .gnu99,
-    cxxLanguageStandard: .gnucxx14
+    cxxLanguageStandard: .cxx17
 )

@@ -1,6 +1,8 @@
 /*
 
-Copyright (c) 2007-2018, Arvid Norberg
+Copyright (c) 2007-2012, 2014-2020, Arvid Norberg
+Copyright (c) 2016, Pavel Pimenov
+Copyright (c) 2016-2017, Alden Torres
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -69,8 +71,8 @@ int render_lsd_packet(char* dst, int const len, int const listen_port
 }
 } // anonymous namespace
 
-lsd::lsd(io_service& ios, aux::lsd_callback& cb
-	, address const& listen_address, address const& netmask)
+lsd::lsd(io_context& ios, aux::lsd_callback& cb
+	, address const listen_address, address const netmask)
 	: m_callback(cb)
 	, m_listen_address(listen_address)
 	, m_netmask(netmask)
@@ -134,7 +136,7 @@ void lsd::start(error_code& ec)
 	}
 
 	ADD_OUTSTANDING_ASYNC("lsd::on_announce");
-	m_socket.async_receive(boost::asio::null_buffers{}
+	m_socket.async_wait(udp::socket::wait_read
 		, std::bind(&lsd::on_announce, self(), _1));
 }
 
@@ -191,7 +193,7 @@ void lsd::announce_impl(sha1_hash const& ih, int const listen_port
 	if (m_disabled) return;
 
 	ADD_OUTSTANDING_ASYNC("lsd::resend_announce");
-	m_broadcast_timer.expires_from_now(seconds(2 * retry_count), ec);
+	m_broadcast_timer.expires_after(seconds(2 * retry_count));
 	m_broadcast_timer.async_wait(std::bind(&lsd::resend_announce, self(), _1
 		, ih, listen_port, retry_count));
 }
@@ -217,7 +219,7 @@ void lsd::on_announce(error_code const& ec)
 		boost::asio::buffer(buffer), from, {}, err));
 
 	ADD_OUTSTANDING_ASYNC("lsd::on_announce");
-	m_socket.async_receive(boost::asio::null_buffers{}
+	m_socket.async_wait(udp::socket::wait_read
 		, std::bind(&lsd::on_announce, self(), _1));
 
 	if (!match_addr_mask(from.address(), m_listen_address, m_netmask))
@@ -331,7 +333,7 @@ void lsd::close()
 {
 	error_code ec;
 	m_socket.close(ec);
-	m_broadcast_timer.cancel(ec);
+	m_broadcast_timer.cancel();
 	m_disabled = true;
 }
 

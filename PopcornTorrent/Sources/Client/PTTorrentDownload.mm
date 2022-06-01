@@ -257,8 +257,8 @@ using namespace libtorrent;
         self.alertsLoopActive = NO;
     }
     
-    firstPiece = -1;
-    endPiece = 0;
+    firstPiece = libtorrent::piece_index_t(-1);
+    endPiece = libtorrent::piece_index_t(0);
     
     self.streaming = NO;
     

@@ -139,6 +139,12 @@ struct equals_factor_policy
         return factor;
     }
 
+    template <typename E>
+    void multiply_epsilon(E const& multiplier)
+    {
+        factor *= multiplier;
+    }
+
     T factor;
 };
 
@@ -153,6 +159,8 @@ struct equals_factor_policy<T, false>
     {
         return T(1);
     }
+
+    void multiply_epsilon(T const& ) {}
 };
 
 template <typename Type,
@@ -517,6 +525,30 @@ struct rounding_cast<Result, Source, true, false>
     }
 };
 
+template <typename T, bool IsIntegral = std::is_integral<T>::value>
+struct divide
+{
+    static inline T apply(T const& n, T const& d)
+    {
+        return n / d;
+    }
+};
+
+template <typename T>
+struct divide<T, true>
+{
+    static inline T apply(T const& n, T const& d)
+    {
+        return n == 0 ? 0
+          : n < 0
+          ? (d < 0 ? (n + (-d + 1) / 2) / d + 1
+                   : (n + ( d + 1) / 2) / d - 1  )
+          : (d < 0 ? (n - (-d + 1) / 2) / d - 1
+                   : (n - ( d + 1) / 2) / d + 1  )
+        ;
+    }
+};
+
 } // namespace detail
 #endif
 
@@ -786,6 +818,17 @@ template <typename Result, typename T>
 inline Result rounding_cast(T const& v)
 {
     return detail::rounding_cast<Result, T>::apply(v);
+}
+
+/*
+\brief Short utility to divide. If the division is integer, it rounds the division
+       to the nearest value, without using floating point calculations
+\ingroup utility
+*/
+template <typename T>
+inline T divide(T const& n, T const& d)
+{
+    return detail::divide<T>::apply(n, d);
 }
 
 /*!

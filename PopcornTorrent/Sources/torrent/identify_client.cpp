@@ -1,6 +1,12 @@
 /*
 
-Copyright (c) 2003-2018, Arvid Norberg
+Copyright (c) 2003-2010, 2012-2019, Arvid Norberg
+Copyright (c) 2004, spyhole
+Copyright (c) 2016, Pavel Pimenov
+Copyright (c) 2017, Alden Torres
+Copyright (c) 2017, Col-blimp
+Copyright (c) 2017, Andrei Kurushin
+Copyright (c) 2019, gubatron
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -155,6 +161,7 @@ namespace {
 		, {"BE", "baretorrent"}
 		, {"BF", "Bitflu"}
 		, {"BG", "BTG"}
+		, {"BI", "BiglyBT"}
 		, {"BL", "BitBlinder"}
 		, {"BP", "BitTorrent Pro"}
 		, {"BR", "BitRocket"}
@@ -185,6 +192,7 @@ namespace {
 		, {"LH", "LH-ABC"}
 		, {"LK", "Linkage"}
 		, {"LP", "lphant"}
+		, {"LR", "LibreTorrent"}
 		, {"LT", "libtorrent"}
 		, {"LW", "Limewire"}
 		, {"M",  "Mainline"}
@@ -232,6 +240,7 @@ namespace {
 		, {"XS", "XSwifter"}
 		, {"XT", "XanTorrent"}
 		, {"XX", "Xtorrent"}
+		, {"ZO", "Zona"}
 		, {"ZT", "ZipTorrent"}
 		, {"lt", "rTorrent"}
 		, {"pX", "pHoeniX"}
@@ -263,6 +272,7 @@ namespace {
 		, {0, "T00---0", "Teeweety"}
 		, {0, "BTDWV-", "Deadman Walking"}
 		, {2, "BS", "BitSpirit"}
+		, {0, "-SP", "BitSpirit 3.6"}
 		, {0, "Pando-", "Pando"}
 		, {0, "LIME", "LimeWire"}
 		, {0, "btuga", "BTugaXP"}

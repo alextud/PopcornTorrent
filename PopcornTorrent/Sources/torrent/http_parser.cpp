@@ -1,6 +1,8 @@
 /*
 
-Copyright (c) 2008-2018, Arvid Norberg
+Copyright (c) 2008-2019, Arvid Norberg
+Copyright (c) 2016-2018, Alden Torres
+Copyright (c) 2017, Pavel Pimenov
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -135,16 +137,26 @@ namespace libtorrent {
 	std::string const& http_parser::header(string_view const key) const
 	{
 		static std::string const empty;
-		// TODO: remove to_string() if we're in C++14
-		auto const i = m_header.find(key.to_string());
+		// at least GCC-5.4 for ARM (on travis) has a libstdc++ whose debug map$
+		// doesn't seem to support transparent comparators$
+#if ! defined _GLIBCXX_DEBUG
+		auto const i = m_header.find(key);
+#else
+		auto const i = m_header.find(std::string(key));
+#endif
 		if (i == m_header.end()) return empty;
 		return i->second;
 	}
 
 	boost::optional<seconds32> http_parser::header_duration(string_view const key) const
 	{
-		// TODO: remove to_string() if we're in C++14
-		auto const i = m_header.find(key.to_string());
+		// at least GCC-5.4 for ARM (on travis) has a libstdc++ whose debug map$
+		// doesn't seem to support transparent comparators$
+#if ! defined _GLIBCXX_DEBUG
+		auto const i = m_header.find(key);
+#else
+		auto const i = m_header.find(std::string(key));
+#endif
 		if (i == m_header.end()) return boost::none;
 		auto const val = std::atol(i->second.c_str());
 		if (val <= 0) return boost::none;

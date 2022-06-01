@@ -1,6 +1,11 @@
 /*
 
-Copyright (c) 2008-2018, Arvid Norberg
+Copyright (c) 2008-2020, Arvid Norberg
+Copyright (c) 2016-2017, Alden Torres
+Copyright (c) 2016, 2018, Steven Siloti
+Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2017, Pavel Pimenov
+Copyright (c) 2018, TheOriginalWinCat
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -34,15 +39,16 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/config.hpp"
 #include "libtorrent/http_seed_connection.hpp"
-#include "libtorrent/invariant_check.hpp"
+#include "libtorrent/aux_/invariant_check.hpp"
 #include "libtorrent/aux_/session_impl.hpp"
 #include "libtorrent/peer_info.hpp"
 #include "libtorrent/hex.hpp" // for is_hex
+#include "libtorrent/random.hpp"
 #include "libtorrent/optional.hpp"
 
 namespace libtorrent {
 
-	http_seed_connection::http_seed_connection(peer_connection_args const& pack
+	http_seed_connection::http_seed_connection(peer_connection_args& pack
 		, web_seed_t& web)
 		: web_connection_base(pack, web)
 		, m_url(web.url)
@@ -74,6 +80,10 @@ namespace libtorrent {
 
 	void http_seed_connection::on_connected()
 	{
+		peer_id pid;
+		aux::random_bytes(pid);
+		set_pid(pid);
+
 		// this is always a seed
 		incoming_have_all();
 		web_connection_base::on_connected();
@@ -167,7 +177,7 @@ namespace libtorrent {
 		request += "GET ";
 		request += using_proxy ? m_url : m_path;
 		request += "?info_hash=";
-		request += escape_string({t->torrent_file().info_hash().data(), 20});
+		request += escape_string({associated_info_hash().data(), 20});
 		request += "&piece=";
 		request += to_string(r.piece);
 
@@ -315,21 +325,26 @@ namespace libtorrent {
 						return;
 					}
 
+					// when SSRF mitigation is enabled, a web seed on the internet (is_global())
+					// is not allowed to redirect to a server on the local network, so we set
+					// the no_local_ips flag
+					auto const web_seed_flags = torrent::ephemeral
+						| ((m_settings.get_bool(settings_pack::ssrf_mitigation) && aux::is_global(remote().address()))
+							? torrent::no_local_ips : web_seed_flag_t{});
+
 					// add the redirected url and remove the current one
-					t->add_web_seed(location, web_seed_entry::http_seed);
+					t->add_web_seed(location, web_seed_entry::http_seed
+						, std::string{}, web_seed_entry::headers_t{}
+						, web_seed_flags);
 					t->remove_web_seed_conn(this, errors::redirecting, operation_t::bittorrent, peer_error);
 					return;
 				}
 
 				std::string const& server_version = m_parser.header("server");
 				if (!server_version.empty())
-				{
-					m_server_string = "URL seed @ ";
-					m_server_string += m_host;
-					m_server_string += " (";
-					m_server_string += server_version;
-					m_server_string += ")";
-				}
+					m_server_string = server_version;
+				else
+					m_server_string = m_host;
 
 				m_response_left = atol(m_parser.header("content-length").c_str());
 				if (m_response_left == -1)

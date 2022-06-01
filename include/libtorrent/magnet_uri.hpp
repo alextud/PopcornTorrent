@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2007-2018, Arvid Norberg
+Copyright (c) 2007-2009, 2012-2013, 2016-2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,7 +42,7 @@ POSSIBILITY OF SUCH DAMAGE.
 namespace libtorrent {
 
 	struct torrent_handle;
-	class session;
+	struct session;
 
 	// Generates a magnet URI from the specified torrent. If the torrent
 	// handle is invalid, an empty string is returned.
@@ -60,7 +60,6 @@ namespace libtorrent {
 		, std::string const& save_path
 		, storage_mode_t storage_mode = storage_mode_sparse
 		, bool paused = false
-		, storage_constructor_type sc = default_storage_constructor
 		, void* userdata = nullptr);
 
 	// deprecated in 0.16. Instead, pass in the magnet link as add_torrent_params::url

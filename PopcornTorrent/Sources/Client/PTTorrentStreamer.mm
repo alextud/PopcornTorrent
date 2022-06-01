@@ -84,11 +84,11 @@ using namespace libtorrent;
 - (void)setupSession {
     error_code ec;
     
-    firstPiece = -1;
-    endPiece = 0;
+    firstPiece = libtorrent::piece_index_t(-1);
+    endPiece = libtorrent::piece_index_t(0);
     
     _session = new session();
-    _session->listen_on(std::make_pair(6881, 6889), ec);
+//    _session->listen_on(std::make_pair(6881, 6889), ec);
     
     NSAssert(ec.failed() == false, @"FATAL ERROR: Failed to open listen socket: %s", ec.message().c_str());
     settings_pack pack = default_settings();
@@ -96,12 +96,12 @@ using namespace libtorrent;
                  alert::piece_progress_notification |
                  alert::storage_notification);
     pack.set_bool(settings_pack::listen_system_port_fallback, false);
-    pack.set_bool(settings_pack::use_read_cache, false);
+    pack.set_bool(settings_pack::suggest_read_cache, false);
     // libtorrent 1.1 enables UPnP & NAT-PMP by default
     // turn them off before `libt::session` ctor to avoid split second effects
-    pack.set_bool(settings_pack::enable_upnp, false);
-    pack.set_bool(settings_pack::enable_natpmp, false);
-    pack.set_bool(settings_pack::upnp_ignore_nonrouters, true);
+//    pack.set_bool(settings_pack::enable_upnp, false);
+//    pack.set_bool(settings_pack::enable_natpmp, false);
+//    pack.set_bool(settings_pack::upnp_ignore_nonrouters, true);
     pack.set_int(settings_pack::file_pool_size, 2);
     _session->apply_settings(pack);
     
@@ -180,7 +180,8 @@ using namespace libtorrent;
             if (ec) {
                 error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-1 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithCString:ec.message().c_str() encoding:NSUTF8StringEncoding]}];
             }
-            MIN_PIECES = ((tp.ti->file_at([self selectedFileIndexInTorrentWithTorrentInfo:tp.ti]).size*0.03)/tp.ti->piece_length());
+            NSInteger index = [self selectedFileIndexInTorrentWithTorrentInfo:tp.ti];
+            MIN_PIECES = ((tp.ti->files().file_size(libtorrent::file_index_t(index)) * 0.03)/tp.ti->piece_length());
         } else {
             error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-2 userInfo:@{NSLocalizedDescriptionKey: [NSString localizedStringWithFormat:@"File doesn't exist at path: %@".localizedString, filePath]}];
         }
@@ -253,7 +254,8 @@ using namespace libtorrent;
         }
         return;
     }
-    th.set_sequential_download(true);
+//    th.set_sequential_download(true);
+    th.set_flags(libtorrent::torrent_flags::sequential_download);
     th.set_max_connections(60);
     th.set_max_uploads(10);
     
@@ -281,21 +283,22 @@ using namespace libtorrent;
     for(std::vector<torrent_handle>::size_type i = 0; i != ths.size(); i++) {
         std::shared_ptr<const torrent_info> ti = ths[i].torrent_file();
         
-        //get all the pieces in the movie
-        int totalTorrentPieces = ti->num_pieces();
-        
         //find the torrent piece corresponding to the requested piece of the movie
-        peer_request request = ti->map_file([self selectedFileIndexInTorrent:ths[i]], range.location, (int)range.length);
+        NSInteger index = [self selectedFileIndexInTorrent:ths[i]];
+        peer_request request = ti->map_file(libtorrent::file_index_t(index), range.location, (int)range.length);
         
         //set first and last pieces
-        int startPiece = request.piece;
-        int finalPiece = startPiece + MIN_PIECES - 1;
+        libtorrent::piece_index_t startPiece = request.piece;
+        libtorrent::piece_index_t finalPiece = startPiece; // + libtorrent::piece_index_t(MIN_PIECES - 1);
+        for (int i=0; i < MIN_PIECES; i++) {
+            finalPiece++;
+        }
         
-        NSLog(@"new startPiece: %d", startPiece);
+        NSLog(@"new startPiece: %d", (int)startPiece);
         
         //check if we are over the total pieces of the torrent
-        if (finalPiece > totalTorrentPieces) {
-            finalPiece = totalTorrentPieces - 1;
+        if (request.piece >= ti->last_piece()) {
+            finalPiece = ti->last_piece();
         }
         
         //set global variables
@@ -303,10 +306,10 @@ using namespace libtorrent;
         endPiece = finalPiece;
         
         //if we already have the requested part of the movie return immediately
-        for(int j=startPiece; j<=finalPiece;j++){
+        for(piece_index_t j=startPiece; j<=finalPiece; j++){
             if (!ths[i].have_piece(j)) {
                 break;
-            }else if(j==finalPiece){
+            } else if (j==finalPiece){
                 return YES;
             }
         }
@@ -352,8 +355,8 @@ using namespace libtorrent;
     _fileName = nil;
     _requiredSpace = 0;
     _totalDownloaded = 0;
-    firstPiece = -1;
-    endPiece = 0;
+    firstPiece = libtorrent::piece_index_t(-1);
+    endPiece = libtorrent::piece_index_t(0);
     
     self.streaming = NO;
     _torrentStatus = (PTTorrentStatus){0, 0, 0, 0, 0, 0};
@@ -390,30 +393,28 @@ using namespace libtorrent;
             const alert *ptr = _session->wait_for_alert(max_wait);
             if (ptr != nullptr && _session != nullptr) {
                 _session->pop_alerts(&deque);
-                for (std::vector<alert *>::iterator it = deque.begin(); it != deque.end(); ++it) {
-                    std::auto_ptr<alert> alert(*it);
+                for (alert* alert : deque) {
                     switch (alert->type()) {
                         case metadata_received_alert::alert_type:
-                            [self metadataReceivedAlert:((metadata_received_alert *)alert.get())->handle];
+                            [self metadataReceivedAlert:((metadata_received_alert *)alert)->handle];
                             break;
                             
                         case piece_finished_alert::alert_type:
-                            [self pieceFinishedAlert:((piece_finished_alert *)alert.get())->handle forPieceIndex:((piece_finished_alert *)alert.get())->piece_index];
+                            [self pieceFinishedAlert:((piece_finished_alert *)alert)->handle forPieceIndex:((piece_finished_alert *)alert)->piece_index];
                             break;
                             // In case the video file is already fully downloaded
                         case torrent_finished_alert::alert_type:
-                            [self torrentFinishedAlert:((torrent_finished_alert *)alert.get())->handle];
+                            [self torrentFinishedAlert:((torrent_finished_alert *)alert)->handle];
                             break;
                         case save_resume_data_alert::alert_type: {
-                            torrent_status st = (((save_resume_data_alert *)alert.get())->handle).status(torrent_handle::query_save_path
+                            torrent_status st = (((save_resume_data_alert *)alert)->handle).status(torrent_handle::query_save_path
                                                                                                          | torrent_handle::query_name);
-                            [self resumeDataReadyAlertWithData:((save_resume_data_alert *)alert.get())->params andSaveDirectory:[NSString stringWithUTF8String:(st.save_path + "/resumeData.fastresume").c_str()]];
+                            [self resumeDataReadyAlertWithData:((save_resume_data_alert *)alert)->params andSaveDirectory:[NSString stringWithUTF8String:(st.save_path + "/resumeData.fastresume").c_str()]];
                             break;
                         }
                         default:
                             break;
                     }
-                    alert.release();
                 }
                 deque.clear();
                 deque.shrink_to_fit();
@@ -423,33 +424,36 @@ using namespace libtorrent;
 }
 
 - (void)prioritizeNextPieces:(torrent_handle)th {
-    int next_required_piece = 0;
+    piece_index_t next_required_piece = piece_index_t(0);
     
-    if (firstPiece != -1) {
-        next_required_piece = (int)firstPiece;
-    } else {
-        next_required_piece = required_pieces.size() >0 ? required_pieces[MIN_PIECES - 1] + 1 : 0;
+    if (firstPiece != piece_index_t(-1)) {
+        next_required_piece = firstPiece;
+    } else if (required_pieces.size() > 0) {
+        next_required_piece = required_pieces[MIN_PIECES - 1];
+        next_required_piece++;
     }
     
-    firstPiece = -1;
+    firstPiece = libtorrent::piece_index_t(-1);
     
     mtx.lock();
     
     required_pieces.clear();
     
-    std::vector<int> piece_priorities = th.piece_priorities();
+    std::vector<libtorrent::download_priority_t> piece_priorities = th.get_piece_priorities();
     std::shared_ptr<const torrent_info> ti = th.torrent_file();
     th.clear_piece_deadlines();//clear all deadlines on all pieces before we set new ones
-    std::fill(piece_priorities.begin(), piece_priorities.end(), 1);
+    std::fill(piece_priorities.begin(), piece_priorities.end(), download_priority_t(1));
+    th.prioritize_pieces(piece_priorities);
     
-    for (int i = next_required_piece; i < next_required_piece + MIN_PIECES; i++) {
-        if (i < ti->num_pieces()) {
-            piece_priorities[i] = LIBTORRENT_PRIORITY_MAXIMUM;
-            th.set_piece_deadline(i, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
-            required_pieces.push_back(i);
+    for (int i = 0; i < MIN_PIECES; i++) {
+        if (next_required_piece < ti->last_piece()) {
+            th.piece_priority(next_required_piece, download_priority_t(LIBTORRENT_PRIORITY_MAXIMUM));
+            th.set_piece_deadline(next_required_piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
+            required_pieces.push_back(next_required_piece);
+            next_required_piece++;
         }
     }
-    th.prioritize_pieces(piece_priorities);
+
     mtx.unlock();
 }
 
@@ -461,8 +465,7 @@ using namespace libtorrent;
     
     std::shared_ptr<const torrent_info> ti = th.torrent_file();
     int file_index = [self selectedFileIndexInTorrent:th];
-    file_entry fe = ti->file_at(file_index);
-    std::string path = fe.path;
+    std::string path = ti->files().file_path(file_index_t(file_index));
     _fileName = [NSString stringWithCString:path.c_str() encoding:NSUTF8StringEncoding];
     
     if (self.readyToPlayBlock) {
@@ -539,8 +542,8 @@ using namespace libtorrent;
         NSMutableArray* file_names = [[NSMutableArray alloc] init];
         NSMutableArray* file_sizes = [[NSMutableArray alloc] init];
         for (int i=0; i<ti->num_files(); i++) {
-            [file_names addObject:[NSString stringWithFormat:@"%s", files.file_name(i).to_string().c_str()]];
-            [file_sizes addObject:[NSNumber numberWithLong: ti->file_at(i).size]];
+            [file_names addObject:[NSString stringWithFormat:@"%s", files.file_name(file_index_t(i)).to_string().c_str()]];
+            [file_sizes addObject:[NSNumber numberWithLong: files.file_size(file_index_t(i))]];
         }
 
         selectedFileIndex = self.selectionBlock([file_names copy], [file_sizes copy]);
@@ -559,21 +562,16 @@ using namespace libtorrent;
     NSDictionary *results = [savePathURL resourceValuesForKeys:@[NSURLVolumeAvailableCapacityKey] error:nil];
     NSNumber *availableSpace = results[NSURLVolumeAvailableCapacityKey];//get available space on device
     
-    int file_index = [self selectedFileIndexInTorrent:th];
+    int selectedIndex = [self selectedFileIndexInTorrent:th];
+    file_index_t file_index = file_index_t(selectedIndex);
     
-    std::vector<int> file_priorities = th.file_priorities();
-    std::fill(file_priorities.begin(), file_priorities.end(), LIBTORRENT_PRIORITY_SKIP);
-    file_priorities[file_index] = LIBTORRENT_PRIORITY_MAXIMUM;
+    std::vector<libtorrent::download_priority_t> file_priorities = th.get_file_priorities();
+    std::fill(file_priorities.begin(), file_priorities.end(), download_priority_t(LIBTORRENT_PRIORITY_SKIP));
+    file_priorities[selectedIndex] = download_priority_t(LIBTORRENT_PRIORITY_MAXIMUM);
     th.prioritize_files(file_priorities);
     
     std::shared_ptr<const torrent_info> ti = th.torrent_file();
-    MIN_PIECES = ((ti->file_at(file_index).size*0.03)/ti->piece_length());
-    int first_piece = ti->map_file(file_index, 0, 0).piece;
-    for (int i = first_piece; i < first_piece + MIN_PIECES; i++) {
-        required_pieces.push_back(i);
-    }
-    
-    int64_t file_size = ti->file_at(file_index).size;
+    int64_t file_size = ti->files().file_size(file_index);
     if (file_size > availableSpace.longLongValue) {
         PTSize *fileSize = [PTSize sizeWithLongLong: file_size];
         NSString *description = [NSString localizedStringWithFormat:@"There is not enough space to download the torrent. Please clear at least %@ and try again.".localizedString, fileSize.stringValue];
@@ -582,25 +580,35 @@ using namespace libtorrent;
         [self cancelStreamingAndDeleteData:NO];
         return;
     }
-
-    int last_piece = ti->map_file(file_index, file_size - 1, 0).piece;
+    
+    
+    // download first pieces
+    MIN_PIECES = ((ti->files().file_size(file_index) * 0.03) / ti->piece_length());
+    piece_index_t first_piece = ti->map_file(file_index, 0, 0).piece;
+    for (int i = 0; i < MIN_PIECES; i++) {
+        required_pieces.push_back(first_piece);
+        first_piece++;
+    }
+    
+    // download last pieces
+    piece_index_t last_piece = ti->map_file(file_index, file_size - 1, 0).piece;
     for (int i = 0; i < 10; i++) {
-        required_pieces.push_back(last_piece - i);
+        required_pieces.push_back(last_piece);
+        last_piece--;
     }
     
     th.clear_piece_deadlines();
-    std::vector<int> piece_priorities = th.piece_priorities();
-    std::fill(piece_priorities.begin(), piece_priorities.end(), 1);
+    std::vector<libtorrent::download_priority_t> piece_priorities = th.get_piece_priorities();
+    std::fill(piece_priorities.begin(), piece_priorities.end(), download_priority_t(1));
     th.prioritize_pieces(piece_priorities);
-    for(std::vector<int>::size_type i = 0; i != required_pieces.size(); i++) {
-        int piece = required_pieces[i];
-        th.piece_priority(piece, LIBTORRENT_PRIORITY_MAXIMUM);
+    for(piece_index_t piece : required_pieces) {
+        th.piece_priority(piece, download_priority_t(LIBTORRENT_PRIORITY_MAXIMUM));
         th.set_piece_deadline(piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
     }
     _status = th.status();
 }
 
-- (void)pieceFinishedAlert:(torrent_handle)th forPieceIndex:(int)index{
+- (void)pieceFinishedAlert:(torrent_handle)th forPieceIndex:(piece_index_t)index {
     _status = th.status();
     
     int requiredPiecesDownloaded = 0;
@@ -608,8 +616,7 @@ using namespace libtorrent;
     
     auto copyRequired(required_pieces);
     
-    for(std::vector<int>::size_type i = 0; i != copyRequired.size(); i++) {
-        int piece = copyRequired[i];
+    for(piece_index_t piece: copyRequired) {
         if(_session->is_paused())break;
         if (th.have_piece(piece) == false) {
             allRequiredPiecesDownloaded = NO;
@@ -640,13 +647,15 @@ using namespace libtorrent;
     
     
     if (allRequiredPiecesDownloaded) {
-        if (th.have_piece((int)endPiece) && self.requestedRangeInfo.count > 0) {
+        if (th.have_piece(endPiece) && self.requestedRangeInfo.count > 0) {
             GCDWebServerFileResponse *response = [self.requestedRangeInfo objectForKey:@"response"];
             GCDWebServerCompletionBlock completionBlock = [self.requestedRangeInfo objectForKey:@"completionBlock"];
             [self.requestedRangeInfo removeAllObjects];
             completionBlock(response);
         }
-        if (MIN_PIECES == 0)[self metadataReceivedAlert:th];
+        if (MIN_PIECES == 0) {
+            [self metadataReceivedAlert:th];
+        }
         [self prioritizeNextPieces:th];
         [self processTorrent:th];
     }

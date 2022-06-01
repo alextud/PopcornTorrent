@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2017, Arvid Norberg
+Copyright (c) 2017-2018, 2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -47,6 +47,7 @@ namespace libtorrent {
 	constexpr peer_flags_t peer_info::remote_choked;
 	constexpr peer_flags_t peer_info::supports_extensions;
 	constexpr peer_flags_t peer_info::local_connection;
+	constexpr peer_flags_t peer_info::outgoing_connection;
 	constexpr peer_flags_t peer_info::handshake;
 	constexpr peer_flags_t peer_info::connecting;
 #if TORRENT_ABI_VERSION == 1
@@ -82,4 +83,7 @@ namespace libtorrent {
 	constexpr bandwidth_state_flags_t peer_info::bw_global;
 #endif
 
+	constexpr connection_type_t peer_info::standard_bittorrent;
+	constexpr connection_type_t peer_info::web_seed;
+	constexpr connection_type_t peer_info::http_seed;
 }

@@ -1,6 +1,7 @@
 /*
 
-Copyright (c) 2017, Arvid Norberg
+Copyright (c) 2017-2020, Arvid Norberg
+Copyright (c) 2018, Steven Siloti
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -54,6 +55,10 @@ namespace libtorrent {
 	// peer, it can be used as a rendezvous point in case direct connections to
 	// the peer fail
 	constexpr pex_flags_t pex_holepunch = 3_bit;
+
+	// protocol v2
+	// this is not a standard flag, it is only used internally
+	constexpr pex_flags_t pex_lt_v2 = 7_bit;
 }
 
 #endif
