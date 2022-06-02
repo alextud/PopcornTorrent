@@ -82,26 +82,29 @@ using namespace libtorrent;
 }
 
 - (void)setupSession {
-    error_code ec;
-    
     firstPiece = libtorrent::piece_index_t(-1);
     endPiece = libtorrent::piece_index_t(0);
     
     _session = new session();
-//    _session->listen_on(std::make_pair(6881, 6889), ec);
-    
-    NSAssert(ec.failed() == false, @"FATAL ERROR: Failed to open listen socket: %s", ec.message().c_str());
     settings_pack pack = default_settings();
-    pack.set_int(settings_pack::alert_mask, alert::status_notification |
+
+    pack.set_str(settings_pack::listen_interfaces, "0.0.0.0:6881,[::]:6881");
+    pack.set_int(settings_pack::max_retry_port_bind, 6889 - 6881);
+    
+    pack.set_int(settings_pack::alert_mask,
+                 alert::status_notification |
                  alert::piece_progress_notification |
-                 alert::storage_notification);
+                 alert::storage_notification
+//                 alert::all_categories
+                 );
+
     pack.set_bool(settings_pack::listen_system_port_fallback, false);
     pack.set_bool(settings_pack::suggest_read_cache, false);
     // libtorrent 1.1 enables UPnP & NAT-PMP by default
     // turn them off before `libt::session` ctor to avoid split second effects
-//    pack.set_bool(settings_pack::enable_upnp, false);
-//    pack.set_bool(settings_pack::enable_natpmp, false);
-//    pack.set_bool(settings_pack::upnp_ignore_nonrouters, true);
+    pack.set_bool(settings_pack::enable_upnp, false);
+    pack.set_bool(settings_pack::enable_natpmp, false);
+    pack.set_bool(settings_pack::upnp_ignore_nonrouters, true);
     pack.set_int(settings_pack::file_pool_size, 2);
     _session->apply_settings(pack);
     
@@ -164,7 +167,8 @@ using namespace libtorrent;
     NSString *MD5String = nil;
     
     if ([filePathOrMagnetLink hasPrefix:@"magnet"]) {
-        NSString *magnetLink = filePathOrMagnetLink;
+        NSString *magnetLink = [[filePathOrMagnetLink stringByRemovingPercentEncoding] stringByReplacingOccurrencesOfString:@"&amp;" withString:@"&"];
+
         tp = parse_magnet_uri(std::string([magnetLink UTF8String]));//std::string([magnetLink UTF8String]);
         
         MD5String = [CocoaSecurity md5:magnetLink].hexLower;
@@ -583,7 +587,7 @@ using namespace libtorrent;
     
     
     // download first pieces
-    MIN_PIECES = ((ti->files().file_size(file_index) * 0.03) / ti->piece_length());
+    MIN_PIECES = (ti->files().file_size(file_index) * 0.03) / ti->piece_length();
     piece_index_t first_piece = ti->map_file(file_index, 0, 0).piece;
     for (int i = 0; i < MIN_PIECES; i++) {
         required_pieces.push_back(first_piece);
