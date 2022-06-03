@@ -395,6 +395,10 @@ using namespace libtorrent;
         
         while ([self isAlertsLoopActive]) {
             const alert *ptr = _session->wait_for_alert(max_wait);
+            if (![self isAlertsLoopActive]) {
+                break;
+            }
+
             if (ptr != nullptr && _session != nullptr) {
                 _session->pop_alerts(&deque);
                 for (alert* alert : deque) {
@@ -414,6 +418,13 @@ using namespace libtorrent;
                             torrent_status st = (((save_resume_data_alert *)alert)->handle).status(torrent_handle::query_save_path
                                                                                                          | torrent_handle::query_name);
                             [self resumeDataReadyAlertWithData:((save_resume_data_alert *)alert)->params andSaveDirectory:[NSString stringWithUTF8String:(st.save_path + "/resumeData.fastresume").c_str()]];
+                            break;
+                        }
+                        case file_error_alert::alert_type: {
+                            NSString *description = [NSString stringWithFormat:@"%s", alert->message().c_str()];
+                            NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-4 userInfo:@{NSLocalizedDescriptionKey: description}];
+                            if (_failureBlock) _failureBlock(error);
+                            [self cancelStreamingAndDeleteData:NO];
                             break;
                         }
                         default:
@@ -539,22 +550,16 @@ using namespace libtorrent;
         return selectedFileIndex;
     }
 
-
-    int files_count = ti->num_files();
-    if (files_count > 1) {    
-        auto files = ti->files();
-        NSMutableArray* file_names = [[NSMutableArray alloc] init];
-        NSMutableArray* file_sizes = [[NSMutableArray alloc] init];
-        for (int i=0; i<ti->num_files(); i++) {
-            [file_names addObject:[NSString stringWithFormat:@"%s", files.file_name(file_index_t(i)).to_string().c_str()]];
-            [file_sizes addObject:[NSNumber numberWithLong: files.file_size(file_index_t(i))]];
-        }
-
-        selectedFileIndex = self.selectionBlock([file_names copy], [file_sizes copy]);
-        return selectedFileIndex;
+    auto files = ti->files();
+    NSMutableArray* file_names = [[NSMutableArray alloc] init];
+    NSMutableArray* file_sizes = [[NSMutableArray alloc] init];
+    for (int i=0; i<ti->num_files(); i++) {
+        [file_names addObject:[NSString stringWithFormat:@"%s", files.file_name(file_index_t(i)).to_string().c_str()]];
+        [file_sizes addObject:[NSNumber numberWithLong: files.file_size(file_index_t(i))]];
     }
 
-    return 0;
+    selectedFileIndex = self.selectionBlock([file_names copy], [file_sizes copy]);
+    return selectedFileIndex;
 }
 
 #pragma mark - Alerts
@@ -695,16 +700,15 @@ using namespace libtorrent;
     _session->remove_torrent(th);
 }
 
-- (void) resumeDataReadyAlertWithData:(add_torrent_params)resumeData andSaveDirectory:(NSString*)directory{
+- (void)resumeDataReadyAlertWithData:(add_torrent_params)resumeData andSaveDirectory:(NSString*)directory {
+    auto const buf = write_resume_data_buf(resumeData);
+
     self.alertsQueue = nil;
     self.alertsLoopActive = NO;
-    // _savePath = nil; do not clear this path as it might crash
-    std::vector<torrent_handle> ths = _session->get_torrents();
-    for(std::vector<torrent_handle>::size_type i = 0; i != ths.size(); i++) {
-        _session->remove_torrent(ths[i]);
-    }
 
-    auto const buf = write_resume_data_buf(resumeData);
+    for (auto torrent: _session->get_torrents()) {
+        _session->remove_torrent(torrent);
+    }
     
     std::stringstream ss;
     ss.unsetf(std::ios_base::skipws);
