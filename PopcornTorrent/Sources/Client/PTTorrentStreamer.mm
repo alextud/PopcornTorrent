@@ -17,8 +17,6 @@
 
 #define ALERTS_LOOP_WAIT_MILLIS 500
 #define PIECE_DEADLINE_MILLIS 100
-#define LIBTORRENT_PRIORITY_SKIP 0
-#define LIBTORRENT_PRIORITY_MAXIMUM 7
 
 NSNotificationName const PTTorrentStatusDidChangeNotification = @"com.popcorntimetv.popcorntorrent.status.change";
 
@@ -282,18 +280,16 @@ using namespace libtorrent;
 
 - (BOOL)fastForwardTorrentForRange:(NSRange)range
 {
-    std::vector<torrent_handle> ths = _session->get_torrents();
-    
-    for(std::vector<torrent_handle>::size_type i = 0; i != ths.size(); i++) {
-        std::shared_ptr<const torrent_info> ti = ths[i].torrent_file();
+    for(auto torrent: _session->get_torrents()) {
+        auto ti = torrent.torrent_file();
         
         //find the torrent piece corresponding to the requested piece of the movie
-        NSInteger index = [self selectedFileIndexInTorrent:ths[i]];
+        NSInteger index = [self selectedFileIndexInTorrent:torrent];
         peer_request request = ti->map_file(libtorrent::file_index_t(index), range.location, (int)range.length);
         
         //set first and last pieces
-        libtorrent::piece_index_t startPiece = request.piece;
-        libtorrent::piece_index_t finalPiece = startPiece; // + libtorrent::piece_index_t(MIN_PIECES - 1);
+        auto startPiece = request.piece;
+        auto finalPiece = startPiece; // + libtorrent::piece_index_t(MIN_PIECES - 1);
         for (int i=0; i < MIN_PIECES; i++) {
             finalPiece++;
         }
@@ -311,9 +307,9 @@ using namespace libtorrent;
         
         //if we already have the requested part of the movie return immediately
         for(piece_index_t j=startPiece; j<=finalPiece; j++){
-            if (!ths[i].have_piece(j)) {
+            if (!torrent.have_piece(j)) {
                 break;
-            } else if (j==finalPiece){
+            } else if (j==finalPiece) {
                 return YES;
             }
         }
@@ -324,7 +320,7 @@ using namespace libtorrent;
         mtx.unlock();
         
         //start to download the requested part of the movie
-        [self prioritizeNextPieces:ths[i]];
+        [self prioritizeNextPieces:torrent];
     }
     
     return NO;
@@ -333,14 +329,16 @@ using namespace libtorrent;
 
 
 - (void)cancelStreamingAndDeleteData:(BOOL)deleteData {
-    
-    std::vector<torrent_handle> ths = _session->get_torrents();
-    for(std::vector<torrent_handle>::size_type i = 0; i != ths.size(); i++) {
-        ths[i].pause();
-        if (!deleteData && ths[i].need_save_resume_data())ths[i].save_resume_data();
-        ths[i].flush_cache();
+    for(auto torrent: _session->get_torrents()) {
+        torrent.pause();
+        if (!deleteData && torrent.need_save_resume_data()) {
+            torrent.save_resume_data();
+        }
+        torrent.flush_cache();
         _session->pause();
-        if (deleteData)_session->remove_torrent(ths[i]);
+        if (deleteData) {
+            _session->remove_torrent(torrent);
+        }
     }
     
     required_pieces.clear();
@@ -458,15 +456,15 @@ using namespace libtorrent;
     
     required_pieces.clear();
     
-    std::vector<libtorrent::download_priority_t> piece_priorities = th.get_piece_priorities();
-    std::shared_ptr<const torrent_info> ti = th.torrent_file();
+    auto piece_priorities = th.get_piece_priorities();
+    auto ti = th.torrent_file();
     th.clear_piece_deadlines();//clear all deadlines on all pieces before we set new ones
-    std::fill(piece_priorities.begin(), piece_priorities.end(), download_priority_t(1));
+    std::fill(piece_priorities.begin(), piece_priorities.end(), low_priority);
     th.prioritize_pieces(piece_priorities);
     
     for (int i = 0; i < MIN_PIECES; i++) {
         if (next_required_piece < ti->last_piece()) {
-            th.piece_priority(next_required_piece, download_priority_t(LIBTORRENT_PRIORITY_MAXIMUM));
+            th.piece_priority(next_required_piece, top_priority);
             th.set_piece_deadline(next_required_piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
             required_pieces.push_back(next_required_piece);
             next_required_piece++;
@@ -482,7 +480,7 @@ using namespace libtorrent;
     self.streaming = YES;
     _status = th.status();
     
-    std::shared_ptr<const torrent_info> ti = th.torrent_file();
+    auto ti = th.torrent_file();
     int file_index = [self selectedFileIndexInTorrent:th];
     std::string path = ti->files().file_path(file_index_t(file_index));
     _fileName = [NSString stringWithCString:path.c_str() encoding:NSUTF8StringEncoding];
@@ -578,12 +576,12 @@ using namespace libtorrent;
     int selectedIndex = [self selectedFileIndexInTorrent:th];
     file_index_t file_index = file_index_t(selectedIndex);
     
-    std::vector<libtorrent::download_priority_t> file_priorities = th.get_file_priorities();
-    std::fill(file_priorities.begin(), file_priorities.end(), download_priority_t(LIBTORRENT_PRIORITY_SKIP));
-    file_priorities[selectedIndex] = download_priority_t(LIBTORRENT_PRIORITY_MAXIMUM);
+    auto file_priorities = th.get_file_priorities();
+    std::fill(file_priorities.begin(), file_priorities.end(), dont_download);
+    file_priorities[selectedIndex] = top_priority;
     th.prioritize_files(file_priorities);
     
-    std::shared_ptr<const torrent_info> ti = th.torrent_file();
+    auto ti = th.torrent_file();
     int64_t file_size = ti->files().file_size(file_index);
     if (file_size > availableSpace.longLongValue) {
         PTSize *fileSize = [PTSize sizeWithLongLong: file_size];
@@ -611,11 +609,11 @@ using namespace libtorrent;
     }
     
     th.clear_piece_deadlines();
-    std::vector<libtorrent::download_priority_t> piece_priorities = th.get_piece_priorities();
-    std::fill(piece_priorities.begin(), piece_priorities.end(), download_priority_t(1));
+    auto piece_priorities = th.get_piece_priorities();
+    std::fill(piece_priorities.begin(), piece_priorities.end(), low_priority);
     th.prioritize_pieces(piece_priorities);
-    for(piece_index_t piece : required_pieces) {
-        th.piece_priority(piece, download_priority_t(LIBTORRENT_PRIORITY_MAXIMUM));
+    for (piece_index_t piece : required_pieces) {
+        th.piece_priority(piece, top_priority);
         th.set_piece_deadline(piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
     }
     _status = th.status();
@@ -629,7 +627,7 @@ using namespace libtorrent;
     
     auto copyRequired(required_pieces);
     
-    for(piece_index_t piece: copyRequired) {
+    for (piece_index_t piece: copyRequired) {
         if(_session->is_paused())break;
         if (th.have_piece(piece) == false) {
             allRequiredPiecesDownloaded = NO;
