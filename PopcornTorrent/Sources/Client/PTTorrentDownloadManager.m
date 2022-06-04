@@ -127,12 +127,12 @@
     [_listeners removeObject:listener];
 }
 
-- (PTTorrentDownload *)startDownloadingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink mediaMetadata:(NSDictionary<NSString *, id> *)mediaMetadata {
+- (PTTorrentDownload *)startDownloadingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink mediaMetadata:(NSDictionary<NSString *, id> *)mediaMetadata selectFileTDownload:(PTTorrentStreamerSelection)callback {
     PTTorrentDownload *download = [[PTTorrentDownload alloc] initWithMediaMetadata:mediaMetadata downloadStatus:PTTorrentDownloadStatusProcessing];
     download.delegate = self;
     
     [_activeDownloads addObject:download];
-    [download startDownloadingFromFileOrMagnetLink:filePathOrMagnetLink];
+    [download startDownloadingFromFileOrMagnetLink:filePathOrMagnetLink selectFileTDownload:callback];
     
     return download;
 }

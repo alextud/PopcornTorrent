@@ -92,14 +92,10 @@ NS_ASSUME_NONNULL_BEGIN
  
  @warning   Usage of this method is discouraged. Use `PTTorrentDownloadManager` class instead.
  */
-- (void)startDownloadingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink;
+- (void)startDownloadingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink selectFileTDownload:(PTTorrentStreamerSelection)callback;
 
 #pragma mark - Hidden methods
 
-- (void) __unavailable startStreamingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink
-                                  progress:(PTTorrentStreamerProgress _Nullable)progress
-                               readyToPlay:(PTTorrentStreamerReadyToPlay _Nullable)readyToPlay
-                                   failure:(PTTorrentStreamerFailure _Nullable)failure;
 + (instancetype) __unavailable sharedStreamer;
 - (instancetype) __unavailable init;
 + (instancetype) __unavailable new;

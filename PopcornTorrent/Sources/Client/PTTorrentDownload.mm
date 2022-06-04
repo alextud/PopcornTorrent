@@ -12,6 +12,7 @@
 NSString * const PTTorrentItemPropertyDownloadStatus = @"downloadStatus";
 NSString * const MPMediaItemPropertyPathOrLink = @"filePathOrLink";
 NSString * const PTTorrentItemPropertyTorrentProgress = @"progress";
+NSString * const MPMediaItemPropertySelectedFileIndex = @"selectedFileIndex";
 
 using namespace libtorrent;
 
@@ -126,14 +127,15 @@ using namespace libtorrent;
 }
 
 
-- (void)startDownloadingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink {
+- (void)startDownloadingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink selectFileTDownload:(PTTorrentStreamerSelection)callback {
     __weak __typeof__(self) weakSelf = self;
     
     NSMutableDictionary *copy = _mediaMetadata.mutableCopy;
     copy[MPMediaItemPropertyPathOrLink] = filePathOrMagnetLink;
     _mediaMetadata = copy;
     
-    [super startStreamingFromFileOrMagnetLink:filePathOrMagnetLink directoryName:_mediaMetadata[MPMediaItemPropertyPersistentID] progress:^(PTTorrentStatus status) {
+    [self startStreamingFromMultiTorrentFileOrMagnetLink:filePathOrMagnetLink
+                                                progress:^(PTTorrentStatus status) {
         if (weakSelf.downloadStatus == PTTorrentDownloadStatusPaused) return;
         PTTorrentDownloadStatus downloadStatus = status.totalProgress < 1 ? PTTorrentDownloadStatusDownloading : PTTorrentDownloadStatusFinished;
         
@@ -143,7 +145,9 @@ using namespace libtorrent;
         if (downloadStatus == PTTorrentDownloadStatusFinished) {
             [self cancelStreamingAndDeleteData:NO];
         }
-    } readyToPlay:nil failure:^(NSError * _Nonnull error) {
+    } readyToPlay: {
+        
+    } failure:^(NSError * _Nonnull error) {
         id<PTTorrentDownloadManagerListener> delegate = weakSelf.delegate;
         
         [weakSelf setDownloadStatus:PTTorrentDownloadStatusFailed];
@@ -151,6 +155,14 @@ using namespace libtorrent;
         if (delegate && [delegate respondsToSelector:@selector(downloadDidFail:withError:)]) {
             [delegate downloadDidFail:weakSelf withError:error];
         }
+    } selectFileToStream:^int(NSArray<NSString *> * _Nonnull torrentsAvailable, NSArray<NSNumber *> * _Nonnull fileSizes) {
+        NSInteger index = callback(torrentsAvailable, fileSizes);
+        
+        NSMutableDictionary *copy = _mediaMetadata.mutableCopy;
+        copy[MPMediaItemPropertySelectedFileIndex] = @(index);
+        _mediaMetadata = copy;
+        
+        return index;
     }];
 }
 
@@ -196,7 +208,9 @@ using namespace libtorrent;
     
     if (_session->get_torrents().size() == 0) // Torrent was in the middle of downloading and app was exited. Download has been loaded from disk and is now being resumed. Fetch torrent metadata instead of just resuming.
     {
-        [self startDownloadingFromFileOrMagnetLink:_mediaMetadata[MPMediaItemPropertyPathOrLink]];
+        [self startDownloadingFromFileOrMagnetLink:_mediaMetadata[MPMediaItemPropertyPathOrLink] selectFileTDownload:^int(NSArray<NSString *> * _Nonnull torrentsAvailable, NSArray<NSNumber *> * _Nonnull fileSizes) {
+            return [_mediaMetadata[MPMediaItemPropertySelectedFileIndex] integerValue];
+        }];
         return [self setDownloadStatus:PTTorrentDownloadStatusProcessing];
     }
     

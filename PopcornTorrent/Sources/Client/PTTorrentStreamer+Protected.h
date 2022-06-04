@@ -41,12 +41,6 @@
 @property (nonatomic) libtorrent::torrent_status status;
 @property (nonatomic) bool isFinished;
 
-- (void)startStreamingFromFileOrMagnetLink:(NSString * _Nonnull)filePathOrMagnetLink
-                             directoryName:(NSString * _Nullable)directoryName
-                                  progress:(PTTorrentStreamerProgress _Nullable)progress
-                               readyToPlay:(PTTorrentStreamerReadyToPlay _Nullable)readyToPlay
-                                   failure:(PTTorrentStreamerFailure _Nullable)failure;
-
 - (void)startWebServerAndPlay;
 
 @end

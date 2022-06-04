@@ -42,7 +42,7 @@ NS_ASSUME_NONNULL_BEGIN
  
  @warning   Only one property in the `mediaMetadata` dictionary must be set: `MPMediaItemPropertyPersistentID`. If this is not set, an exception will be raised. Also, if every `mediaMetadata` value is not an instance of `NSData`, `NSDate`, `NSNumber`, `NSString`, `NSArray`, or `NSDictionary`, an exception will be raised.
  */
-- (PTTorrentDownload *)startDownloadingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink mediaMetadata:(NSDictionary<NSString *, id> *)mediaMetadata;
+- (PTTorrentDownload *)startDownloadingFromFileOrMagnetLink:(NSString *)filePathOrMagnetLink mediaMetadata:(NSDictionary<NSString *, id> *)mediaMetadata selectFileTDownload:(PTTorrentStreamerSelection)callback;;
 
 /**
  Stops the specified download, deletes all download progress (if any) and removes the download object from the `activeDownloads` array.
