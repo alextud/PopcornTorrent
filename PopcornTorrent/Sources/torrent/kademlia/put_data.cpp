@@ -1,10 +1,6 @@
 /*
 
-Copyright (c) 2006, Daniel Wallin
-Copyright (c) 2015, Thomas Yuan
-Copyright (c) 2015, Steven Siloti
-Copyright (c) 2016-2019, Arvid Norberg
-Copyright (c) 2016-2018, Alden Torres
+Copyright (c) 2006-2018, Arvid Norberg & Daniel Wallin
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,9 +38,9 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace libtorrent { namespace dht {
 
-put_data::put_data(node& dht_node, put_callback callback)
+put_data::put_data(node& dht_node, put_callback const& callback)
 	: traversal_algorithm(dht_node, {})
-	, m_put_callback(std::move(callback))
+	, m_put_callback(callback)
 {}
 
 char const* put_data::name() const { return "put_data"; }

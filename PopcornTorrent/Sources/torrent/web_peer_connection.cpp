@@ -1,11 +1,6 @@
 /*
 
-Copyright (c) 2006-2020, Arvid Norberg
-Copyright (c) 2016, Falcosc
-Copyright (c) 2016-2017, 2020, Alden Torres
-Copyright (c) 2016, Steven Siloti
-Copyright (c) 2016-2017, Andrei Kurushin
-Copyright (c) 2017, Pavel Pimenov
+Copyright (c) 2003-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -47,15 +42,14 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/entry.hpp"
 #include "libtorrent/bencode.hpp"
 #include "libtorrent/alert_types.hpp"
-#include "libtorrent/aux_/invariant_check.hpp"
+#include "libtorrent/invariant_check.hpp"
 #include "libtorrent/io.hpp"
 #include "libtorrent/parse_url.hpp"
 #include "libtorrent/peer_info.hpp"
 #include "libtorrent/aux_/session_interface.hpp"
-#include "libtorrent/aux_/alert_manager.hpp" // for alert_manager
+#include "libtorrent/alert_manager.hpp" // for alert_manager
 #include "libtorrent/aux_/escape_string.hpp" // for escape_path
 #include "libtorrent/hex.hpp" // for is_hex
-#include "libtorrent/random.hpp"
 #include "libtorrent/torrent.hpp"
 #include "libtorrent/http_parser.hpp"
 
@@ -65,7 +59,7 @@ constexpr int request_size_overhead = 5000;
 
 std::string escape_file_path(file_storage const& storage, file_index_t index);
 
-web_peer_connection::web_peer_connection(peer_connection_args& pack
+web_peer_connection::web_peer_connection(peer_connection_args const& pack
 	, web_seed_t& web)
 	: web_connection_base(pack, web)
 	, m_url(web.url)
@@ -141,10 +135,6 @@ std::string escape_file_path(file_storage const& storage, file_index_t index)
 
 void web_peer_connection::on_connected()
 {
-	peer_id pid;
-	aux::random_bytes(pid);
-	set_pid(pid);
-
 	if (m_web->have_files.empty())
 	{
 		incoming_have_all();
@@ -291,8 +281,8 @@ void web_peer_connection::disconnect(error_code const& ec
 	{
 		// if the web server doesn't support keepalive and we were
 		// disconnected as a graceful EOF, reconnect right away
-		if (t) post(get_context()
-			, std::bind(&torrent::maybe_connect_web_seeds, t));
+		if (t) get_io_service().post(
+			std::bind(&torrent::maybe_connect_web_seeds, t));
 	}
 
 	if (error >= failure)
@@ -503,7 +493,7 @@ void web_peer_connection::write_request(peer_request const& r)
 
 	if (num_pad_files == int(m_file_requests.size()))
 	{
-		post(get_context(), std::bind(
+		get_io_service().post(std::bind(
 			&web_peer_connection::on_receive_padfile,
 			std::static_pointer_cast<web_peer_connection>(self())));
 		return;
@@ -520,10 +510,17 @@ namespace {
 
 	std::string get_peer_name(http_parser const& p, std::string const& host)
 	{
+		std::string ret = "URL seed @ ";
+		ret += host;
+
 		std::string const& server_version = p.header("server");
 		if (!server_version.empty())
-			return server_version;
-		return host;
+		{
+			ret += " (";
+			ret += server_version;
+			ret += ")";
+		}
+		return ret;
 	}
 
 	std::tuple<std::int64_t, std::int64_t> get_range(
@@ -656,13 +653,6 @@ void web_peer_connection::handle_redirect(int const bytes_left)
 	bool const single_file_request = !m_path.empty()
 		&& m_path[m_path.size() - 1] != '/';
 
-	// when SSRF mitigation is enabled, a web seed on the internet (is_global())
-	// is not allowed to redirect to a server on the local network, so we set
-	// the no_local_ips flag
-	auto const web_seed_flags = torrent::ephemeral
-		| ((m_settings.get_bool(settings_pack::ssrf_mitigation) && aux::is_global(remote().address()))
-			? torrent::no_local_ips : web_seed_flag_t{});
-
 	// add the redirected url and remove the current one
 	if (!single_file_request)
 	{
@@ -699,7 +689,7 @@ void web_peer_connection::handle_redirect(int const bytes_left)
 		// If we try to load resume with such "web_seed_t" then "web_peer_connection" will send
 		// request with wrong path "http://example2.com/file1" (cause "redirects" map is not serialized in resume)
 		web_seed_t* web = t->add_web_seed(redirect_base, web_seed_entry::url_seed
-			, m_external_auth, m_extra_headers, web_seed_flags);
+			, m_external_auth, m_extra_headers, torrent::ephemeral);
 		web->have_files.resize(t->torrent_file().num_files(), false);
 
 		// the new web seed we're adding only has this file for now
@@ -745,7 +735,7 @@ void web_peer_connection::handle_redirect(int const bytes_left)
 		peer_log(peer_log_alert::info, "LOCATION", "%s", location.c_str());
 #endif
 		t->add_web_seed(location, web_seed_entry::url_seed, m_external_auth
-			, m_extra_headers, web_seed_flags);
+			, m_extra_headers, torrent::ephemeral);
 
 		// this web seed doesn't have any files. Don't try to request from it
 		// again this session
@@ -846,7 +836,7 @@ void web_peer_connection::on_receive(error_code const& error
 			{
 				peer_log(peer_log_alert::info, "STATUS"
 					, "%d %s", m_parser.status_code(), m_parser.message().c_str());
-				auto const& headers = m_parser.headers();
+				std::multimap<std::string, std::string> const& headers = m_parser.headers();
 				for (auto const &i : headers)
 					peer_log(peer_log_alert::info, "STATUS", "   %s: %s", i.first.c_str(), i.second.c_str());
 			}

@@ -26,11 +26,9 @@ let package = Package(
                 .define("TARGET_OS_MAC", .when(platforms: [.macOS])),
 //                .define("BOOST_ASIO_ENABLE_CANCELIO"),
                 .define("BOOST_ASIO_HASH_MAP_BUCKETS", to: "1021"),
-//                .define("BOOST_FILESYSTEM_VERSION", to: "3"),
                 .define("TORRENT_USE_OPENSSL"),
                 .define("TORRENT_USE_LIBCRYPTO"),
                 .define("TORRENT_SSL_PEERS"),
-//                .define("BOOST_NO_CXX14_DECLTYPE_AUTO"),
                 .define("TORRENT_ABI_VERSION", to: "3"),
                 
                 

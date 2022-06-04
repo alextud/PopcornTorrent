@@ -1,11 +1,6 @@
 /*
 
-Copyright (c) 2007-2012, 2014-2020, Arvid Norberg
-Copyright (c) 2015-2018, Alden Torres
-Copyright (c) 2015-2018, 2020, Steven Siloti
-Copyright (c) 2016-2017, Andrei Kurushin
-Copyright (c) 2018, Alexandre Janniaux
-Copyright (c) 2020, Tiger Wang
+Copyright (c) 2007-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -38,10 +33,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/config.hpp"
 
 #include "libtorrent/enum_net.hpp"
+#include "libtorrent/broadcast_socket.hpp"
 #include "libtorrent/assert.hpp"
 #include "libtorrent/aux_/socket_type.hpp"
 #include "libtorrent/span.hpp"
-#include "libtorrent/aux_/ip_helpers.hpp"
 #ifdef TORRENT_WINDOWS
 #include "libtorrent/aux_/win_util.hpp"
 #endif
@@ -62,10 +57,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cstring>
 #endif
 
-#if TORRENT_USE_GRTTABLE
-#include <net/if.h>
-#endif
-
 #if TORRENT_USE_SYSCTL
 #include <sys/sysctl.h>
 #ifdef __APPLE__
@@ -84,9 +75,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/windows.hpp"
 #include <iphlpapi.h>
 #include <ifdef.h> // for IF_OPER_STATUS
-#ifdef TORRENT_WINRT
-#include <netioapi.h>
-#endif
 #endif
 
 #if TORRENT_USE_NETLINK
@@ -122,8 +110,8 @@ enum : int {
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
-#include <cstring>
-#include <cstdlib>
+#include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
 
@@ -140,11 +128,6 @@ enum : int {
 #endif
 
 #if TORRENT_USE_IFADDRS || TORRENT_USE_IFCONF || TORRENT_USE_NETLINK || TORRENT_USE_SYSCTL
-#ifdef TORRENT_BEOS
-// TODO: in C++17, use __has_include for this. Other operating systems are
-// likely to require this as well
-#include <sys/sockio.h>
-#endif
 // capture this here where warnings are disabled (the macro generates warnings)
 const unsigned long siocgifmtu = SIOCGIFMTU;
 #endif
@@ -159,7 +142,7 @@ namespace libtorrent {
 
 namespace {
 
-#if !defined TORRENT_WINDOWS && !defined TORRENT_BUILD_SIMULATOR
+#ifndef TORRENT_WINDOWS
 	struct socket_closer
 	{
 		socket_closer(int s) : m_socket(s) {}
@@ -229,9 +212,7 @@ namespace {
 			| ((f & IFF_BROADCAST) ? if_flags::broadcast : interface_flags{})
 			| ((f & IFF_LOOPBACK) ? if_flags::loopback : interface_flags{})
 			| ((f & IFF_POINTOPOINT) ? if_flags::pointopoint : interface_flags{})
-#ifdef IFF_RUNNING
 			| ((f & IFF_RUNNING) ? if_flags::running : interface_flags{})
-#endif
 			| ((f & IFF_NOARP) ? if_flags::noarp : interface_flags{})
 			| ((f & IFF_PROMISC) ? if_flags::promisc : interface_flags{})
 			| ((f & IFF_ALLMULTI) ? if_flags::allmulti : interface_flags{})
@@ -251,53 +232,6 @@ namespace {
 
 #if TORRENT_USE_NETLINK
 
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wsign-compare"
-#pragma clang diagnostic ignored "-Wcast-qual"
-#pragma clang diagnostic ignored "-Wcast-align"
-#endif
-	// these are here to concentrate all the shady casts these macros expand to,
-	// to disable the warnings for them all
-	bool nlmsg_ok(nlmsghdr const* hdr, int const len)
-	{ return NLMSG_OK(hdr, len); }
-
-	nlmsghdr const* nlmsg_next(nlmsghdr const* hdr, int& len)
-	{ return NLMSG_NEXT(hdr, len); }
-
-	void const* nlmsg_data(nlmsghdr const* hdr)
-	{ return NLMSG_DATA(hdr); }
-
-	rtattr const* rtm_rta(rtmsg const* hdr)
-	{ return static_cast<rtattr const*>(RTM_RTA(hdr)); }
-
-	std::size_t rtm_payload(nlmsghdr const* hdr)
-	{ return RTM_PAYLOAD(hdr); }
-
-	bool rta_ok(rtattr const* rt, std::size_t const len)
-	{ return RTA_OK(rt, len); }
-
-	void const* rta_data(rtattr const* rt)
-	{ return RTA_DATA(rt); }
-
-	rtattr const* rta_next(rtattr const* rt, std::size_t& len)
-	{ return RTA_NEXT(rt, len); }
-
-	rtattr const* ifa_rta(ifaddrmsg const* ifa)
-	{ return static_cast<rtattr const*>(IFA_RTA(ifa)); }
-
-	std::size_t ifa_payload(nlmsghdr const* hdr)
-	{ return IFA_PAYLOAD(hdr); }
-
-	rtattr const* ifla_rta(ifinfomsg const* ifinfo)
-	{ return static_cast<rtattr const*>(IFLA_RTA(ifinfo)); }
-
-	std::size_t ifla_payload(nlmsghdr const* hdr)
-	{ return IFLA_PAYLOAD(hdr); }
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif
-
 	int read_nl_sock(int sock, std::uint32_t const seq, std::uint32_t const pid
 		, std::function<void(nlmsghdr const*)> on_msg)
 	{
@@ -307,15 +241,24 @@ namespace {
 			int const read_len = int(recv(sock, buf.data(), buf.size(), 0));
 			if (read_len < 0) return -1;
 
-			auto const* nl_hdr = reinterpret_cast<nlmsghdr const*>(buf.data());
+			nlmsghdr const* nl_hdr = reinterpret_cast<nlmsghdr const*>(buf.data());
 			int len = read_len;
 
-			for (; len > 0 && nlmsg_ok(nl_hdr, len); nl_hdr = nlmsg_next(nl_hdr, len))
+			for (; len > 0 && NLMSG_OK(nl_hdr, len); nl_hdr = NLMSG_NEXT(nl_hdr, len))
 			{
+#ifdef __clang__
+#pragma clang diagnostic push
+// NLMSG_OK uses signed/unsigned compare in the same expression
+#pragma clang diagnostic ignored "-Wsign-compare"
+#endif
 				// TODO: if we get here, the caller still assumes the error code
 				// is reported via errno
-				if ((nlmsg_ok(nl_hdr, read_len) == 0) || (nl_hdr->nlmsg_type == NLMSG_ERROR))
+				if ((NLMSG_OK(nl_hdr, read_len) == 0) || (nl_hdr->nlmsg_type == NLMSG_ERROR))
 					return -1;
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
 				// this function doesn't handle multiple requests at the same time
 				// so report an error if the message does not have the expected seq and pid
 				// TODO: if we get here, the caller still assumes the error code
@@ -330,7 +273,7 @@ namespace {
 				if ((nl_hdr->nlmsg_flags & NLM_F_MULTI) == 0) return 0;
 			}
 		}
-//		return 0;
+		return 0;
 	}
 
 	int nl_dump_request(int const sock, std::uint32_t const seq
@@ -364,7 +307,7 @@ namespace {
 	struct link_info
 	{
 		int mtu;
-		int if_idx;
+		std::uint32_t if_idx;
 		int type;
 		int oper_state;
 		char name[64];
@@ -373,26 +316,26 @@ namespace {
 
 	link_info parse_nl_link(nlmsghdr const* nl_hdr)
 	{
-		auto const* if_msg = static_cast<ifinfomsg const*>(nlmsg_data(nl_hdr));
-		rtattr const* rta_ptr = ifla_rta(if_msg);
-		std::size_t attr_len = ifla_payload(nl_hdr);
+		auto const* if_msg = reinterpret_cast<ifinfomsg const*>(NLMSG_DATA(nl_hdr));
+		auto const* rta_ptr = reinterpret_cast<rtattr const*>(IFLA_RTA(if_msg));
+		int attr_len = IFLA_PAYLOAD(nl_hdr);
 
 		link_info ret{};
 		ret.flags = convert_if_flags(if_msg->ifi_flags);
 		ret.if_idx = if_msg->ifi_index;
 
-		for (; rta_ok(rta_ptr, attr_len); rta_ptr = rta_next(rta_ptr, attr_len))
+		for (; RTA_OK(rta_ptr, attr_len); rta_ptr = RTA_NEXT(rta_ptr, attr_len))
 		{
-			auto* const ptr = rta_data(rta_ptr);
+			auto* const ptr = RTA_DATA(rta_ptr);
 			switch (rta_ptr->rta_type)
 			{
 				case IFLA_IFNAME:
 					std::strncpy(ret.name, static_cast<char const*>(ptr), sizeof(ret.name) - 1);
 					ret.name[sizeof(ret.name)-1] = '\0';
 					break;
-				case IFLA_MTU: std::memcpy(&ret.mtu, ptr, sizeof(int)); break;
-				case IFLA_LINK: std::memcpy(&ret.type, ptr, sizeof(int)); break;
-				case IFLA_OPERSTATE: std::memcpy(&ret.oper_state, ptr, sizeof(int)); break;
+				case IFLA_MTU: memcpy(&ret.mtu, ptr, sizeof(int)); break;
+				case IFLA_LINK: memcpy(&ret.type, ptr, sizeof(int)); break;
+				case IFLA_OPERSTATE: memcpy(&ret.oper_state, ptr, sizeof(int)); break;
 
 				// ignore these attributes
 				case IFLA_ADDRESS:
@@ -405,7 +348,7 @@ namespace {
 				case IFLA_LINKINFO:
 				default:
 					break;
-			}
+			};
 		}
 		return ret;
 	}
@@ -415,7 +358,7 @@ namespace {
 		// sanity check
 		if (nl_hdr->nlmsg_type != RTM_NEWROUTE) return false;
 
-		auto const* rt_msg = static_cast<rtmsg const*>(nlmsg_data(nl_hdr));
+		rtmsg* rt_msg = reinterpret_cast<rtmsg*>(NLMSG_DATA(nl_hdr));
 
 		if (!valid_addr_family(rt_msg->rtm_family))
 			return false;
@@ -429,26 +372,33 @@ namespace {
 		}
 
 		int if_index = 0;
-		std::size_t rt_len = rtm_payload(nl_hdr);
-		for (rtattr const* rt_attr = rtm_rta(rt_msg);
-			rta_ok(rt_attr, rt_len); rt_attr = rta_next(rt_attr, rt_len))
+		auto rt_len = RTM_PAYLOAD(nl_hdr);
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcast-align"
+#endif
+		for (rtattr* rt_attr = reinterpret_cast<rtattr*>(RTM_RTA(rt_msg));
+			RTA_OK(rt_attr, rt_len); rt_attr = RTA_NEXT(rt_attr, rt_len))
 		{
 			switch(rt_attr->rta_type)
 			{
 				case RTA_OIF:
-					std::memcpy(&if_index, rta_data(rt_attr), sizeof(int));
+					if_index = *reinterpret_cast<int*>(RTA_DATA(rt_attr));
 					break;
 				case RTA_GATEWAY:
-					rt_info->gateway = to_address(rt_msg->rtm_family, rta_data(rt_attr));
+					rt_info->gateway = to_address(rt_msg->rtm_family, RTA_DATA(rt_attr));
 					break;
 				case RTA_DST:
-					rt_info->destination = to_address(rt_msg->rtm_family, rta_data(rt_attr));
+					rt_info->destination = to_address(rt_msg->rtm_family, RTA_DATA(rt_attr));
 					break;
 				case RTA_PREFSRC:
-					rt_info->source_hint = to_address(rt_msg->rtm_family, rta_data(rt_attr));
+					rt_info->source_hint = to_address(rt_msg->rtm_family, RTA_DATA(rt_attr));
 					break;
 			}
 		}
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
 		if (rt_info->gateway.is_v6() && rt_info->gateway.to_v6().is_link_local())
 		{
@@ -473,13 +423,13 @@ namespace {
 		// sanity check
 		if (nl_hdr->nlmsg_type != RTM_NEWADDR) return false;
 
-		auto const* addr_msg = static_cast<ifaddrmsg const*>(nlmsg_data(nl_hdr));
+		ifaddrmsg* addr_msg = reinterpret_cast<ifaddrmsg*>(NLMSG_DATA(nl_hdr));
 
 		if (!valid_addr_family(addr_msg->ifa_family))
 			return false;
 
 		auto interface = std::find_if(nics.begin(), nics.end()
-			, [addr_msg](link_info const& li) { return li.if_idx == int(addr_msg->ifa_index); });
+			, [addr_msg](link_info const& li) { return li.if_idx == addr_msg->ifa_index; });
 		TORRENT_ASSERT(interface != nics.end());
 		if (interface == nics.end()) return false;
 
@@ -487,9 +437,13 @@ namespace {
 		ip_info->netmask = build_netmask(addr_msg->ifa_prefixlen, addr_msg->ifa_family);
 
 		ip_info->interface_address = address();
-		std::size_t rt_len = ifa_payload(nl_hdr);
-		for (rtattr const* rt_attr = ifa_rta(addr_msg);
-			rta_ok(rt_attr, rt_len); rt_attr = rta_next(rt_attr, rt_len))
+		auto rt_len = IFA_PAYLOAD(nl_hdr);
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcast-align"
+#endif
+		for (rtattr* rt_attr = reinterpret_cast<rtattr*>(IFA_RTA(addr_msg));
+			RTA_OK(rt_attr, rt_len); rt_attr = RTA_NEXT(rt_attr, rt_len))
 		{
 			switch(rt_attr->rta_type)
 			{
@@ -503,21 +457,24 @@ namespace {
 			case IFA_LOCAL:
 				if (addr_msg->ifa_family == AF_INET6)
 				{
-					address_v6 addr = inaddr6_to_address(rta_data(rt_attr));
+					address_v6 addr = inaddr6_to_address(RTA_DATA(rt_attr));
 					if (addr_msg->ifa_scope == RT_SCOPE_LINK)
 						addr.scope_id(addr_msg->ifa_index);
 					ip_info->interface_address = addr;
 				}
 				else
 				{
-					ip_info->interface_address = inaddr_to_address(rta_data(rt_attr));
+					ip_info->interface_address = inaddr_to_address(RTA_DATA(rt_attr));
 				}
 				break;
 			}
 		}
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
 		static_assert(sizeof(ip_info->name) == sizeof(interface->name), "interface name field sizes differ");
-		std::memcpy(ip_info->name, interface->name, sizeof(ip_info->name));
+		memcpy(ip_info->name, interface->name, sizeof(ip_info->name));
 		ip_info->flags = interface->flags;
 
 		ip_info->state
@@ -668,11 +625,11 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 			}
 			return b1 == b2;
 		}
-		return (a1.to_v4().to_uint() & mask.to_v4().to_uint())
-			== (a2.to_v4().to_uint() & mask.to_v4().to_uint());
+		return (a1.to_v4().to_ulong() & mask.to_v4().to_ulong())
+			== (a2.to_v4().to_ulong() & mask.to_v4().to_ulong());
 	}
 
-	std::vector<ip_interface> enum_net_interfaces(io_context& ios, error_code& ec)
+	std::vector<ip_interface> enum_net_interfaces(io_service& ios, error_code& ec)
 	{
 		TORRENT_UNUSED(ios); // this may be unused depending on configuration
 		std::vector<ip_interface> ret;
@@ -686,9 +643,9 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 			ip_interface wan;
 			wan.interface_address = ip;
 			if (ip.is_v4())
-				wan.netmask = make_address_v4("255.0.0.0");
+				wan.netmask = address_v4::from_string("255.0.0.0");
 			else
-				wan.netmask = make_address_v6("ffff::");
+				wan.netmask = address_v6::from_string("ffff::");
 			std::strcpy(wan.name, "eth0");
 			std::strcpy(wan.friendly_name, "Ethernet");
 			std::strcpy(wan.description, "Simulator Ethernet Adapter");
@@ -705,7 +662,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 
 		// netlink socket documentation:
 		// https://people.redhat.com/nhorman/papers/netlink.pdf
-		std::uint32_t seq = 0;
+		int seq = 0;
 
 		struct
 		{
@@ -772,7 +729,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 				ret.push_back(iface);
 		}
 		freeifaddrs(ifaddr);
-// MacOS X, BSD, solaris and Haiku
+// MacOS X, BSD and solaris
 #elif TORRENT_USE_IFCONF
 		int const s = ::socket(AF_INET, SOCK_DGRAM, 0);
 		if (s < 0)
@@ -792,7 +749,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 			return ret;
 		}
 
-		char const* ifr = reinterpret_cast<char const*>(ifc.ifc_buf);
+		char *ifr = ifc.ifc_buf;
 
 		int current_size = 0;
 		for (int remaining = ifc.ifc_len;
@@ -821,10 +778,12 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 
 			ifreq req = {};
 			std::strncpy(req.ifr_name, item.ifr_name, IF_NAMESIZE - 1);
-			if (ioctl(s, SIOCGIFFLAGS, &req) == 0)
-				iface.flags = convert_if_flags(req.ifr_flags);
-			else
-				iface.flags = if_flags::up;
+			if (ioctl(s, SIOCGIFFLAGS, &req) < 0)
+			{
+				ec = error_code(errno, system_category());
+				return {};
+			}
+			iface.flags = convert_if_flags(req.ifr_flags);
 
 			if (ioctl(s, SIOCGIFNETMASK, &req) < 0)
 			{
@@ -877,7 +836,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 			}
 
 			for (PIP_ADAPTER_ADDRESSES adapter = adapter_addresses;
-				adapter != nullptr; adapter = adapter->Next)
+				adapter != 0; adapter = adapter->Next)
 			{
 				ip_interface r;
 				std::strncpy(r.name, adapter->AdapterName, sizeof(r.name) - 1);
@@ -978,8 +937,8 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 		INTERFACE_INFO buffer[30];
 		DWORD size;
 
-		if (WSAIoctl(s, SIO_GET_INTERFACE_LIST, nullptr, 0, buffer,
-			sizeof(buffer), &size, nullptr, nullptr) != 0)
+		if (WSAIoctl(s, SIO_GET_INTERFACE_LIST, 0, 0, buffer,
+			sizeof(buffer), &size, 0, 0) != 0)
 		{
 			ec = error_code(WSAGetLastError(), system_category());
 			closesocket(s);
@@ -998,6 +957,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 				, iface.interface_address.is_v4() ? AF_INET : AF_INET6);
 			ret.push_back(iface);
 		}
+
 #else
 
 #error "Don't know how to enumerate network interfaces on this platform"
@@ -1011,7 +971,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 		bool const v4 = iface.interface_address.is_v4();
 
 		// local IPv6 addresses can never be used to reach the internet
-		if (!v4 && aux::is_local(iface.interface_address)) return {};
+		if (!v4 && is_local(iface.interface_address)) return {};
 
 		auto const it = std::find_if(routes.begin(), routes.end()
 			, [&](ip_route const& r) -> bool
@@ -1037,7 +997,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 				// if *any* global IP can be routed to this interface, it's
 				// considered able to reach the internet
 				return r.destination.is_unspecified()
-					|| aux::is_global(r.destination) ;
+					|| is_global(r.destination) ;
 			});
 	}
 
@@ -1051,12 +1011,12 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 				return family(r.destination) == fam
 					&& r.name == device
 					&& (r.destination.is_unspecified()
-						|| aux::is_global(r.destination)
+						|| is_global(r.destination)
 					);
 			});
 	}
 
-	std::vector<ip_route> enum_routes(io_context& ios, error_code& ec)
+	std::vector<ip_route> enum_routes(io_service& ios, error_code& ec)
 	{
 		std::vector<ip_route> ret;
 		TORRENT_UNUSED(ios);
@@ -1074,7 +1034,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 			if (ip.is_v4())
 			{
 				r.destination = address_v4();
-				r.netmask = make_address_v4("255.0.0.0");
+				r.netmask = address_v4::from_string("255.0.0.0");
 				address_v4::bytes_type b = ip.to_v4().to_bytes();
 				b[3] = 1;
 				r.gateway = address_v4(b);
@@ -1082,7 +1042,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 			else
 			{
 				r.destination = address_v6();
-				r.netmask = make_address_v6("ffff:ffff:ffff:ffff::0");
+				r.netmask = address_v6::from_string("ffff:ffff:ffff:ffff::0");
 				address_v6::bytes_type b = ip.to_v6().to_bytes();
 				b[14] = 1;
 				r.gateway = address_v6(b);
@@ -1285,9 +1245,9 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 			{
 
 				ip_route r;
-				r.destination = make_address(adapter->IpAddressList.IpAddress.String, ec);
-				r.gateway = make_address(adapter->GatewayList.IpAddress.String, ec);
-				r.netmask = make_address(adapter->IpAddressList.IpMask.String, ec);
+				r.destination = address::from_string(adapter->IpAddressList.IpAddress.String, ec);
+				r.gateway = address::from_string(adapter->GatewayList.IpAddress.String, ec);
+				r.netmask = address::from_string(adapter->IpAddressList.IpMask.String, ec);
 				strncpy(r.name, adapter->AdapterName, sizeof(r.name) - 1);
 				r.name[sizeof(r.name) - 1] = '\0';
 
@@ -1447,76 +1407,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 			ec = error_code(errno, system_category());
 			return std::vector<ip_route>();
 		}
-#elif TORRENT_USE_GRTTABLE
 
-		for (int fam = 0; fam < 2; ++fam)
-		{
-			int const s = ::socket(fam == 0 ? AF_INET : AF_INET6, SOCK_DGRAM, 0);
-			if (s < 0)
-			{
-				ec = error_code(errno, system_category());
-				return ret;
-			}
-			socket_closer c1(s);
-			ifconf ifc;
-			ifc.ifc_len = sizeof(ifc.ifc_value);
-			if (ioctl(s, SIOCGRTSIZE, &ifc, sizeof(ifc)) < 0)
-			{
-				ec = error_code(errno, system_category());
-				return ret;
-			}
-
-			std::uint32_t const sz(ifc.ifc_value);
-
-			std::vector<char> buf(sz);
-			ifc.ifc_len = sz;
-			ifc.ifc_buf = static_cast<void*>(buf.data());
-			if (ioctl(s, SIOCGRTTABLE, &ifc, sizeof(ifc)) < 0)
-			{
-				ec = error_code(errno, system_category());
-				return ret;
-			}
-
-			ifreq const* i = reinterpret_cast<ifreq const*>(ifc.ifc_buf);
-
-			int bytes_left = static_cast<int>(ifc.ifc_len);
-			while (bytes_left > 0)
-			{
-				route_entry const& route = i->ifr_route;
-
-				ip_route ipr{};
-				int skip = IF_NAMESIZE + sizeof(route_entry);
-				if (route.destination != nullptr)
-				{
-					ipr.destination = sockaddr_to_address(route.destination);
-					skip += route.destination->sa_len;
-				}
-				if (route.mask != nullptr)
-				{
-					ipr.netmask = sockaddr_to_address(route.mask);
-					skip += route.mask->sa_len;
-				}
-				if (route.gateway)
-				{
-					ipr.gateway = sockaddr_to_address(route.gateway);
-					skip += route.gateway->sa_len;
-				}
-				if (route.source != nullptr)
-				{
-					ipr.source_hint = sockaddr_to_address(route.source);
-					skip += route.source->sa_len;
-				}
-				ipr.mtu = route.mtu;
-				std::strncpy(ipr.name, i->ifr_name, sizeof(ipr.name) - 1);
-				ipr.name[sizeof(ipr.name) - 1] = '\0';
-
-				ret.push_back(ipr);
-				bytes_left -= skip;
-				i = reinterpret_cast<ifreq const*>(reinterpret_cast<char const*>(i) + skip);
-			}
-		}
-#elif defined TORRENT_ANDROID && __ANDROID_API__ >= 24
-		ec = boost::asio::error::operation_not_supported;
 #else
 #error "don't know how to enumerate network routes on this platform"
 #endif
@@ -1525,7 +1416,7 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 
 	// returns the device name whose local address is ``addr``. If
 	// no such device is found, an empty string is returned.
-	std::string device_for_address(address addr, io_context& ios, error_code& ec)
+	std::string device_for_address(address addr, io_service& ios, error_code& ec)
 	{
 		std::vector<ip_interface> ifs = enum_net_interfaces(ios, ec);
 		if (ec) return {};

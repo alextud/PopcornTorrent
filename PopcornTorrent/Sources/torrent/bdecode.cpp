@@ -1,10 +1,6 @@
 /*
 
-Copyright (c) 2015-2020, Arvid Norberg
-Copyright (c) 2016-2017, Steven Siloti
-Copyright (c) 2016-2017, Andrei Kurushin
-Copyright (c) 2016-2017, 2019, Alden Torres
-Copyright (c) 2017, Pavel Pimenov
+Copyright (c) 2015-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,7 +38,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cstring> // for memset
 #include <cstdio> // for snprintf
 #include <cinttypes> // for PRId64 et.al.
-#include <algorithm> // for any_of
 
 #ifndef BOOST_SYSTEM_NOEXCEPT
 #define BOOST_SYSTEM_NOEXCEPT throw()
@@ -50,7 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace libtorrent {
 
-	using aux::bdecode_token;
+	using detail::bdecode_token;
 
 namespace {
 
@@ -129,21 +124,21 @@ namespace {
 
 } // anonymous namespace
 
-namespace aux {
+namespace detail {
 	void escape_string(std::string& ret, char const* str, int len)
 	{
-		if (std::any_of(str, str + len, [](char const c) { return c < 32 || c >= 127; } ))
+		for (int i = 0; i < len; ++i)
 		{
-			for (int i = 0; i < len; ++i)
+			if (str[i] >= 32 && str[i] < 127)
 			{
-				char tmp[3];
-				std::snprintf(tmp, sizeof(tmp), "%02x", std::uint8_t(str[i]));
+				ret += str[i];
+			}
+			else
+			{
+				char tmp[5];
+				std::snprintf(tmp, sizeof(tmp), "\\x%02x", std::uint8_t(str[i]));
 				ret += tmp;
 			}
-		}
-		else
-		{
-			ret.assign(str, std::size_t(len));
 		}
 	}
 }
@@ -248,7 +243,7 @@ namespace aux {
 		(*this) = n;
 	}
 
-	bdecode_node& bdecode_node::operator=(bdecode_node const& n) &
+	bdecode_node& bdecode_node::operator=(bdecode_node const& n)
 	{
 		if (&n == this) return *this;
 		m_tokens = n.m_tokens;
@@ -276,6 +271,9 @@ namespace aux {
 		, m_buffer(buf)
 		, m_buffer_size(len)
 		, m_token_idx(idx)
+		, m_last_index(-1)
+		, m_last_token(-1)
+		, m_size(-1)
 	{
 		TORRENT_ASSERT(tokens != nullptr);
 		TORRENT_ASSERT(idx >= 0);
@@ -417,14 +415,6 @@ namespace aux {
 		return {m_buffer + t.offset, static_cast<std::ptrdiff_t>(next.offset - t.offset)};
 	}
 
-	std::ptrdiff_t bdecode_node::data_offset() const noexcept
-	{
-		TORRENT_ASSERT_PRECOND(m_token_idx != -1);
-		if (m_token_idx == -1) return -1;
-		bdecode_token const& t = m_root_tokens[m_token_idx];
-		return t.offset;
-	}
-
 	bdecode_node bdecode_node::list_at(int i) const
 	{
 		TORRENT_ASSERT(type() == list_t);
@@ -506,7 +496,7 @@ namespace aux {
 		return ret;
 	}
 
-	std::pair<bdecode_node, bdecode_node> bdecode_node::dict_at_node(int i) const
+	std::pair<string_view, bdecode_node> bdecode_node::dict_at(int i) const
 	{
 		TORRENT_ASSERT(type() == dict_t);
 		TORRENT_ASSERT(m_token_idx != -1);
@@ -552,16 +542,8 @@ namespace aux {
 		TORRENT_ASSERT(tokens[token].type != bdecode_token::end);
 
 		return std::make_pair(
-			bdecode_node(tokens, m_buffer, m_buffer_size, token)
+			bdecode_node(tokens, m_buffer, m_buffer_size, token).string_value()
 			, bdecode_node(tokens, m_buffer, m_buffer_size, value_token));
-	}
-
-	std::pair<string_view, bdecode_node> bdecode_node::dict_at(int const i) const
-	{
-		bdecode_node key;
-		bdecode_node value;
-		std::tie(key, value) = dict_at_node(i);
-		return {key.string_value(), value};
 	}
 
 	int bdecode_node::dict_size() const
@@ -711,18 +693,10 @@ namespace aux {
 	{
 		TORRENT_ASSERT(type() == string_t);
 		bdecode_token const& t = m_root_tokens[m_token_idx];
-		auto const size = aux::numeric_cast<std::size_t>(token_source_span(t) - t.start_offset());
+		std::size_t const size = aux::numeric_cast<std::size_t>(token_source_span(t) - t.start_offset());
 		TORRENT_ASSERT(t.type == bdecode_token::string);
 
 		return string_view(m_buffer + t.offset + t.start_offset(), size);
-	}
-
-	std::ptrdiff_t bdecode_node::string_offset() const
-	{
-		TORRENT_ASSERT(type() == string_t);
-		bdecode_token const& t = m_root_tokens[m_token_idx];
-		TORRENT_ASSERT(t.type == bdecode_token::string);
-		return t.offset + t.start_offset();
 	}
 
 	char const* bdecode_node::string_ptr() const
@@ -961,7 +935,7 @@ namespace aux {
 
 					// the bdecode_token only has 8 bits to keep the header size
 					// in. If it overflows, fail!
-					if (start - str_start - 2 > aux::bdecode_token::max_header)
+					if (start - str_start - 2 > detail::bdecode_token::max_header)
 						TORRENT_FAIL_BDECODE(bdecode_errors::limit_exceeded);
 
 					ret.m_tokens.push_back({str_start - orig_start
@@ -1095,15 +1069,15 @@ done:
 			ret += "'";
 			return;
 		}
-		if (single_line && len > 32)
+		if (single_line && len > 20)
 		{
-			aux::escape_string(ret, str.data(), 25);
+			detail::escape_string(ret, str.data(), 9);
 			ret += "...";
-			aux::escape_string(ret, str.data() + len - 4, 4);
+			detail::escape_string(ret, str.data() + len - 9, 9);
 		}
 		else
 		{
-			aux::escape_string(ret, str.data(), len);
+			detail::escape_string(ret, str.data(), len);
 		}
 		ret += "'";
 	}

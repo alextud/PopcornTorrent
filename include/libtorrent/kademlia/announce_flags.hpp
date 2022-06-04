@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2018-2019, Arvid Norberg
+Copyright (c) 2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -37,8 +37,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/flags.hpp"
 
-namespace libtorrent {
-namespace dht {
+namespace libtorrent { namespace dht {
 
 using announce_flags_t = flags::bitfield_flag<std::uint8_t, struct dht_announce_flag_tag>;
 
@@ -57,7 +56,6 @@ constexpr announce_flags_t ssl_torrent = 2_bit;
 
 }
 
-}
-}
+}}
 
 #endif

@@ -1,8 +1,6 @@
 /*
 
 Copyright (c) 2016, Steven Siloti
-Copyright (c) 2016-2017, Alden Torres
-Copyright (c) 2017, 2019-2020, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -39,7 +37,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <memory>
 
 #include "libtorrent/error_code.hpp"
-#include "libtorrent/io_context.hpp"
+#include "libtorrent/io_service.hpp"
 
 namespace libtorrent { namespace aux {
 
@@ -53,7 +51,7 @@ namespace libtorrent { namespace aux {
 		virtual ~ip_change_notifier() {}
 	};
 
-	TORRENT_EXTRA_EXPORT std::unique_ptr<ip_change_notifier> create_ip_notifier(io_context& ios);
+	TORRENT_EXTRA_EXPORT std::unique_ptr<ip_change_notifier> create_ip_notifier(io_service& ios);
 }}
 
 #endif

@@ -1,11 +1,6 @@
 /*
 
-Copyright (c) 2003-2020, Arvid Norberg
-Copyright (c) 2004, Magnus Jonsson
-Copyright (c) 2009, Daniel Wallin
-Copyright (c) 2016-2018, Alden Torres
-Copyright (c) 2016, 2018, Steven Siloti
-Copyright (c) 2016, Andrei Kurushin
+Copyright (c) 2003-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,17 +37,18 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/peer_list.hpp"
 #include "libtorrent/socket.hpp"
 #include "libtorrent/aux_/socket_type.hpp"
-#include "libtorrent/aux_/invariant_check.hpp"
+#include "libtorrent/invariant_check.hpp"
 #include "libtorrent/time.hpp"
 #include "libtorrent/aux_/session_interface.hpp"
 #include "libtorrent/piece_picker.hpp"
+#include "libtorrent/broadcast_socket.hpp"
 #include "libtorrent/peer_info.hpp"
 #include "libtorrent/random.hpp"
 #include "libtorrent/extensions.hpp"
 #include "libtorrent/ip_filter.hpp"
 #include "libtorrent/torrent_peer_allocator.hpp"
 #include "libtorrent/ip_voter.hpp" // for external_ip
-#include "libtorrent/aux_/ip_helpers.hpp" // for is_v6
+#include "libtorrent/broadcast_socket.hpp" // for is_v6
 
 #if TORRENT_USE_ASSERTS
 #include "libtorrent/socket_io.hpp" // for print_endpoint
@@ -116,8 +112,8 @@ namespace {
 			return lhs->failcount < rhs->failcount;
 
 		// Local peers should always be tried first
-		bool const lhs_local = aux::is_local(lhs->address());
-		bool const rhs_local = aux::is_local(rhs->address());
+		bool const lhs_local = is_local(lhs->address());
+		bool const rhs_local = is_local(rhs->address());
 		if (lhs_local != rhs_local) return int(lhs_local) > int(rhs_local);
 
 		if (lhs->last_connected != rhs->last_connected)
@@ -188,7 +184,7 @@ namespace libtorrent {
 		TORRENT_ASSERT(is_single_thread());
 		INVARIANT_CHECK;
 
-		for (auto i = m_peers.begin(); i != m_peers.end();)
+		for (iterator i = m_peers.begin(); i != m_peers.end();)
 		{
 			if ((filter.access((*i)->address()) & ip_filter::blocked) == 0)
 			{
@@ -250,7 +246,7 @@ namespace libtorrent {
 		TORRENT_ASSERT(is_single_thread());
 		INVARIANT_CHECK;
 
-		for (auto i = m_peers.begin(); i != m_peers.end();)
+		for (iterator i = m_peers.begin(); i != m_peers.end();)
 		{
 			if ((filter.access((*i)->port) & port_filter::blocked) == 0)
 			{
@@ -333,7 +329,7 @@ namespace libtorrent {
 
 		// if this peer is in the connect candidate
 		// cache, erase it from there as well
-		auto const ci = std::find(m_candidate_cache.begin(), m_candidate_cache.end(), *i);
+		std::vector<torrent_peer*>::iterator ci = std::find(m_candidate_cache.begin(), m_candidate_cache.end(), *i);
 		if (ci != m_candidate_cache.end()) m_candidate_cache.erase(ci);
 
 		m_peer_allocator.free_peer_entry(*i);
@@ -715,10 +711,9 @@ namespace libtorrent {
 
 					// decide which peer connection to disconnect
 					// if the ports are equal, pick on at random
-					bool disconnect1 = ((our_port < other_port) && !outgoing1)
+					bool const disconnect1 = ((our_port < other_port) && !outgoing1)
 						|| ((our_port > other_port) && outgoing1)
 						|| ((our_port == other_port) && random(1));
-					disconnect1 &= !i->connection->failed();
 
 #ifndef TORRENT_DISABLE_LOGGING
 					if (c.should_log(peer_log_alert::info))
@@ -769,7 +764,7 @@ namespace libtorrent {
 				);
 			}
 
-			bool const is_v6 = lt::aux::is_v6(c.remote());
+			bool const is_v6 = lt::is_v6(c.remote());
 			torrent_peer* p = m_peer_allocator.allocate_peer_entry(
 				is_v6 ? torrent_peer_allocator_interface::ipv6_peer_type
 				: torrent_peer_allocator_interface::ipv4_peer_type);
@@ -960,8 +955,6 @@ namespace libtorrent {
 			p->supports_utp = true;
 		if (flags & pex_holepunch)
 			p->supports_holepunch = true;
-		if (flags & pex_lt_v2)
-			p->protocol_v2 = true;
 		if (is_connect_candidate(*p))
 			update_connect_candidates(1);
 
@@ -997,8 +990,6 @@ namespace libtorrent {
 			p->supports_utp = true;
 		if (flags & pex_holepunch)
 			p->supports_holepunch = true;
-		if (flags & pex_lt_v2)
-			p->protocol_v2 = true;
 
 		if (was_conn_cand != is_connect_candidate(*p))
 		{
@@ -1026,7 +1017,7 @@ namespace libtorrent {
 		TORRENT_ASSERT(is_single_thread());
 		INVARIANT_CHECK;
 
-		auto iter = std::lower_bound(m_peers.begin(), m_peers.end()
+		iterator iter = std::lower_bound(m_peers.begin(), m_peers.end()
 			, destination, peer_address_compare());
 
 		if (iter != m_peers.end() && (*iter)->dest() == destination)
@@ -1275,7 +1266,7 @@ namespace libtorrent {
 
 		TORRENT_ASSERT(c);
 
-		auto const iter = std::lower_bound(m_peers.begin(), m_peers.end()
+		iterator iter = std::lower_bound(m_peers.begin(), m_peers.end()
 			, c->remote().address(), peer_address_compare());
 
 		if (iter != m_peers.end() && (*iter)->address() == c->remote().address())

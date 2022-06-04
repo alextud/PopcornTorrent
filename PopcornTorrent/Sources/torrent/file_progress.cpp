@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2015-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2016-2017, 2019, Alden Torres
+Copyright (c) 2015-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -34,7 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/piece_picker.hpp"
 #include "libtorrent/file_storage.hpp"
 #include "libtorrent/aux_/file_progress.hpp"
-#include "libtorrent/aux_/invariant_check.hpp"
+#include "libtorrent/invariant_check.hpp"
 
 namespace libtorrent { namespace aux {
 
@@ -52,13 +51,8 @@ namespace libtorrent { namespace aux {
 		m_have_pieces.resize(num_pieces, false);
 		m_file_sizes.clear();
 		m_file_sizes.reserve(num_files);
-		m_pad_file.clear();
-		m_pad_file.reserve(num_files);
-		for (file_index_t i : fs.file_range())
-		{
+		for (file_index_t i(0); i < fs.end_file(); ++i)
 			m_file_sizes.push_back(fs.file_size(i));
-			m_pad_file.push_back(fs.pad_file_at(i));
-		}
 #endif
 
 		m_file_progress.resize(num_files, 0);
@@ -98,10 +92,6 @@ namespace libtorrent { namespace aux {
 			{
 				std::int64_t const add = std::min(size, fs.file_size(file_index) - file_offset);
 				TORRENT_ASSERT(add >= 0);
-
-				if (!fs.pad_file_at(file_index))
-					m_total_on_disk += add;
-
 				m_file_progress[file_index] += add;
 
 				TORRENT_ASSERT(m_file_progress[file_index]
@@ -129,7 +119,6 @@ namespace libtorrent { namespace aux {
 	void file_progress::clear()
 	{
 		INVARIANT_CHECK;
-		m_total_on_disk = 0;
 		m_file_progress.clear();
 		m_file_progress.shrink_to_fit();
 #if TORRENT_USE_INVARIANT_CHECKS
@@ -164,11 +153,6 @@ namespace libtorrent { namespace aux {
 			TORRENT_ASSERT(file_offset <= fs.file_size(file_index));
 			std::int64_t const add = std::min(fs.file_size(file_index)
 				- file_offset, size);
-
-			bool const is_pad_file = fs.pad_file_at(file_index);
-			if (!is_pad_file)
-				m_total_on_disk += add;
-
 			m_file_progress[file_index] += add;
 
 			TORRENT_ASSERT(m_file_progress[file_index]
@@ -176,7 +160,7 @@ namespace libtorrent { namespace aux {
 
 			if (m_file_progress[file_index] >= fs.file_size(file_index) && completed_cb)
 			{
-				if (!is_pad_file)
+				if (!fs.pad_file_at(file_index))
 					completed_cb(file_index);
 			}
 			size -= add;
@@ -188,21 +172,13 @@ namespace libtorrent { namespace aux {
 #if TORRENT_USE_INVARIANT_CHECKS
 	void file_progress::check_invariant() const
 	{
-		if (m_file_progress.empty())
-		{
-			TORRENT_ASSERT(m_total_on_disk == 0);
-			return;
-		}
+		if (m_file_progress.empty()) return;
 
 		file_index_t index(0);
-		std::int64_t total_on_disk = 0;
 		for (std::int64_t progress : m_file_progress)
 		{
-			total_on_disk += m_pad_file[index] ? 0 : progress;
-			TORRENT_ASSERT(progress <= m_file_sizes[index]);
-			++index;
+			TORRENT_ASSERT(progress <= m_file_sizes[index++]);
 		}
-		TORRENT_ASSERT(m_total_on_disk == total_on_disk);
 	}
 #endif
 } }

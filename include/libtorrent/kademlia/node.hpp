@@ -1,10 +1,6 @@
 /*
 
-Copyright (c) 2006-2020, Arvid Norberg
-Copyright (c) 2014-2017, Steven Siloti
-Copyright (c) 2015, Thomas Yuan
-Copyright (c) 2015-2017, Alden Torres
-Copyright (c) 2020, Fonic
+Copyright (c) 2006-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -44,6 +40,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <libtorrent/config.hpp>
 #include <libtorrent/kademlia/dht_storage.hpp>
+#include <libtorrent/kademlia/dht_settings.hpp>
 #include <libtorrent/kademlia/routing_table.hpp>
 #include <libtorrent/kademlia/rpc_manager.hpp>
 #include <libtorrent/kademlia/node_id.hpp>
@@ -56,20 +53,15 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <libtorrent/string_view.hpp>
 #include <libtorrent/aux_/listen_socket_handle.hpp>
 
-// for dht_lookup and dht_routing_bucket
-#include <libtorrent/alert_types.hpp>
-
 namespace libtorrent {
 	struct counters;
 }
 
-namespace libtorrent {
-namespace dht {
+namespace libtorrent { namespace dht {
 
 struct traversal_algorithm;
 struct dht_observer;
 struct msg;
-struct settings;
 
 TORRENT_EXTRA_EXPORT entry write_nodes_entry(std::vector<node_entry> const& nodes);
 
@@ -95,19 +87,11 @@ protected:
 // get the closest node to the id with the given family_name
 using get_foreign_node_t = std::function<node*(node_id const&, std::string const&)>;
 
-struct dht_status
-{
-	node_id our_id;
-	udp::endpoint local_endpoint;
-	std::vector<dht_routing_bucket> table;
-	std::vector<dht_lookup> requests;
-};
-
 class TORRENT_EXTRA_EXPORT node
 {
 public:
 	node(aux::listen_socket_handle const& sock, socket_manager* sock_man
-		, aux::session_settings const& settings
+		, dht::settings const& settings
 		, node_id const& nid
 		, dht_observer* observer, counters& cnt
 		, get_foreign_node_t get_foreign_node
@@ -170,8 +154,7 @@ public:
 		, std::function<void(item&)> data_cb);
 
 	void sample_infohashes(udp::endpoint const& ep, sha1_hash const& target
-		, std::function<void(sha1_hash
-			, time_duration
+		, std::function<void(time_duration
 			, int, std::vector<sha1_hash>
 			, std::vector<std::pair<sha1_hash, udp::endpoint>>)> f);
 
@@ -192,7 +175,7 @@ public:
 	// bucket is not full.
 	void add_node(udp::endpoint const& node);
 
-	int branch_factor() const;
+	int branch_factor() const { return m_settings.search_branching; }
 
 	void add_traversal_algorithm(traversal_algorithm* a)
 	{
@@ -206,17 +189,16 @@ public:
 		m_running_requests.erase(a);
 	}
 
-	dht_status status() const;
+	void status(std::vector<dht_routing_bucket>& table
+		, std::vector<dht_lookup>& requests);
 
 	std::tuple<int, int, int> get_stats_counters() const;
 
 #if TORRENT_ABI_VERSION == 1
-#include "libtorrent/aux_/disable_deprecation_warnings_push.hpp"
 	void status(libtorrent::session_status& s);
-#include "libtorrent/aux_/disable_warnings_pop.hpp"
 #endif
 
-	aux::session_settings const& settings() const { return m_settings; }
+	dht::settings const& settings() const { return m_settings; }
 	counters& stats_counters() const { return m_counters; }
 
 	dht_observer* observer() const { return m_observer; }
@@ -242,15 +224,15 @@ private:
 	bool lookup_peers(sha1_hash const& info_hash, entry& reply
 		, bool noseed, bool scrape, address const& requester) const;
 
-	aux::session_settings const& m_settings;
+	dht::settings const& m_settings;
 
-	mutable std::mutex m_mutex;
+	std::mutex m_mutex;
 
 	// this list must be destructed after the rpc manager
 	// since it might have references to it
 	std::set<traversal_algorithm*> m_running_requests;
 
-	void incoming_request(msg const&, entry&);
+	void incoming_request(msg const& h, entry& e);
 
 	void write_nodes_entries(sha1_hash const& info_hash
 		, bdecode_node const& want, entry& r);
@@ -299,7 +281,6 @@ private:
 #endif
 };
 
-} // namespace dht
-} // namespace libtorrent
+} } // namespace libtorrent::dht
 
 #endif // NODE_HPP

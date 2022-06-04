@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2004-2005, 2007, 2009, 2012-2018, 2020, Arvid Norberg
-Copyright (c) 2015, Mikhail Titov
-Copyright (c) 2016, Alden Torres
+Copyright (c) 2003-2014, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -69,6 +67,12 @@ namespace libtorrent {
 	TORRENT_EXTRA_EXPORT string_view::size_type find(string_view haystack
 		, string_view needle, string_view::size_type pos);
 
+#if TORRENT_ABI_VERSION == 1
+	// deprecated in 1.2
+	// convert a file://-URL to a proper path
+	TORRENT_EXTRA_EXPORT std::string resolve_file_url(std::string const& url);
+#endif
+
 	// returns true if the given string (not 0-terminated) contains
 	// characters that would need to be escaped if used in a URL
 	TORRENT_EXTRA_EXPORT bool need_encoding(char const* str, int len);
@@ -83,6 +87,9 @@ namespace libtorrent {
 
 	// replaces \ with /
 	TORRENT_EXTRA_EXPORT void convert_path_to_posix(std::string& path);
+#ifdef TORRENT_WINDOWS
+	TORRENT_EXTRA_EXPORT void convert_path_to_windows(std::string& path);
+#endif
 
 	TORRENT_EXTRA_EXPORT std::string read_until(char const*& str, char delim
 		, char const* end);
@@ -92,12 +99,14 @@ namespace libtorrent {
 	TORRENT_EXTRA_EXPORT std::string convert_from_wstring(std::wstring const& s);
 #endif
 
-#if TORRENT_NATIVE_UTF8
-	inline std::string const& convert_to_native(std::string const& s) { return s; }
-	inline std::string const& convert_from_native(std::string const& s) { return s; }
-#else
+#if TORRENT_USE_ICONV || TORRENT_USE_LOCALE || defined TORRENT_WINDOWS
 	TORRENT_EXTRA_EXPORT std::string convert_to_native(std::string const& s);
 	TORRENT_EXTRA_EXPORT std::string convert_from_native(std::string const& s);
+#else
+	// internal
+	inline std::string const& convert_to_native(std::string const& s) { return s; }
+	// internal
+	inline std::string const& convert_from_native(std::string const& s) { return s; }
 #endif
 }
 

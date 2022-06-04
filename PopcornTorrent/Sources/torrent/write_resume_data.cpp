@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2017, Steven Siloti
-Copyright (c) 2017-2020, Arvid Norberg
-Copyright (c) 2017-2018, Alden Torres
+Copyright (c) 2017, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,42 +40,17 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/numeric_cast.hpp"
 #include "libtorrent/torrent.hpp" // for default_piece_priority
 #include "libtorrent/aux_/numeric_cast.hpp" // for clamp
-#include "libtorrent/aux_/merkle.hpp" // for merkle_
 
 namespace libtorrent {
-namespace {
-	entry build_tracker_list(std::vector<std::string> const& trackers
-		, std::vector<int> const& tracker_tiers)
-	{
-		entry ret;
-		entry::list_type& tr_list = ret.list();
-		if (trackers.empty()) return ret;
-
-		tr_list.emplace_back(entry::list_type());
-		std::size_t tier = 0;
-		auto tier_it = tracker_tiers.begin();
-		for (std::string const& tr : trackers)
-		{
-			if (tier_it != tracker_tiers.end())
-				tier = aux::clamp(std::size_t(*tier_it++), std::size_t{0}, std::size_t{1024});
-
-			if (tr_list.size() <= tier)
-				tr_list.resize(tier + 1);
-
-			tr_list[tier].list().emplace_back(tr);
-		}
-		return ret;
-	}
-}
 
 	entry write_resume_data(add_torrent_params const& atp)
 	{
 		entry ret;
 
-		using namespace libtorrent::aux; // for write_*_endpoint()
+		using namespace libtorrent::detail; // for write_*_endpoint()
 		ret["file-format"] = "libtorrent resume file";
 		ret["file-version"] = 1;
-		ret["libtorrent-version"] = lt::version_str;
+		ret["libtorrent-version"] = LIBTORRENT_VERSION;
 		ret["allocation"] = atp.storage_mode == storage_mode_allocate
 			? "allocate" : "sparse";
 
@@ -123,15 +96,16 @@ namespace {
 #if TORRENT_ABI_VERSION == 1
 		// deprecated in 1.2
 		if (!atp.url.empty()) ret["url"] = atp.url;
+		if (!atp.uuid.empty()) ret["uuid"] = atp.uuid;
 #endif
 
-		ret["info-hash"] = atp.info_hashes.v1;
-		ret["info-hash2"] = atp.info_hashes.v2;
+		ret["info-hash"] = atp.info_hash;
 
 		if (atp.ti)
 		{
-			auto const info = atp.ti->info_section();
-			ret["info"].preformatted().assign(info.data(), info.data() + info.size());
+			auto const info = atp.ti->metadata();
+			int const size = atp.ti->metadata_size();
+			ret["info"].preformatted().assign(&info[0], &info[0] + size);
 			if (!atp.ti->comment().empty())
 				ret["comment"] = atp.ti->comment();
 			if (atp.ti->creation_date() != 0)
@@ -140,46 +114,14 @@ namespace {
 				ret["created by"] = atp.ti->creator();
 		}
 
-		if (!atp.merkle_trees.empty())
+		if (!atp.merkle_tree.empty())
 		{
-			auto& trees = atp.merkle_trees;
-			auto& ret_trees = ret["trees"].list();
-			ret_trees.reserve(atp.merkle_trees.size());
-			for (file_index_t f(0); f < file_index_t{int(atp.merkle_trees.size())}; ++f)
-			{
-				auto const& tree = trees[f];
-				ret_trees.emplace_back(entry::dictionary_t);
-				auto& ret_dict = ret_trees.back().dict();
-				auto& ret_tree = ret_dict["hashes"].string();
-
-				ret_tree.reserve(tree.size() * 32);
-				for (auto const& n : tree)
-					ret_tree.append(n.data(), n.size());
-
-				if (f < atp.verified_leaf_hashes.end_index())
-				{
-					auto const& verified = atp.verified_leaf_hashes[f];
-					if (!verified.empty())
-					{
-						auto& ret_verified = ret_dict["verified"].string();
-						ret_verified.reserve(verified.size());
-						for (auto const bit : verified)
-							ret_verified.push_back(bit ? '1' : '0');
-					}
-				}
-
-				if (f < atp.merkle_tree_mask.end_index())
-				{
-					auto const& mask = atp.merkle_tree_mask[f];
-					if (!mask.empty())
-					{
-						auto& ret_mask = ret_dict["mask"].string();
-						ret_mask.reserve(mask.size());
-						for (auto const bit : mask)
-							ret_mask.push_back(bit ? '1' : '0');
-					}
-				}
-			}
+			// we need to save the whole merkle hash tree
+			// in order to resume
+			std::string& tree_str = ret["merkle tree"].string();
+			auto const& tree = atp.merkle_tree;
+			tree_str.resize(tree.size() * 20);
+			std::memcpy(&tree_str[0], &tree[0], tree.size() * 20);
 		}
 
 		if (!atp.unfinished_pieces.empty())
@@ -201,11 +143,25 @@ namespace {
 		}
 
 		// save trackers
-		ret["trackers"] = build_tracker_list(atp.trackers, atp.tracker_tiers);
+		entry::list_type& tr_list = ret["trackers"].list();
+		if (!atp.trackers.empty())
+		{
+			tr_list.emplace_back(entry::list_type());
+			std::size_t tier = 0;
+			auto tier_it = atp.tracker_tiers.begin();
+			for (std::string const& tr : atp.trackers)
+			{
+				if (tier_it != atp.tracker_tiers.end())
+					tier = aux::clamp(std::size_t(*tier_it++), std::size_t{0}, std::size_t{1024});
+
+				if (tr_list.size() <= tier)
+					tr_list.resize(tier + 1);
+
+				tr_list[tier].list().emplace_back(tr);
+			}
+		}
 
 		// save web seeds
-		// if we removed the web seeds, make sure to record that in the resume
-		// data
 		entry::list_type& url_list = ret["url-list"].list();
 		std::copy(atp.url_seeds.begin(), atp.url_seeds.end(), std::back_inserter(url_list));
 
@@ -237,7 +193,7 @@ namespace {
 			entry::list_type& fl = ret["mapped_files"].list();
 			for (auto const& ent : atp.renamed_files)
 			{
-				auto const idx = static_cast<std::size_t>(static_cast<int>(ent.first));
+				std::size_t const idx(static_cast<std::size_t>(static_cast<int>(ent.first)));
 				if (idx >= fl.size()) fl.resize(idx + 1);
 				fl[idx] = ent.second;
 			}
@@ -292,90 +248,6 @@ namespace {
 			for (auto const p : atp.piece_priorities)
 				prio.push_back(static_cast<char>(static_cast<std::uint8_t>(p)));
 		}
-
-		return ret;
-	}
-
-	entry write_torrent_file(add_torrent_params const& atp)
-	{
-		entry ret;
-		if (!atp.ti)
-			aux::throw_ex<system_error>(errors::torrent_missing_info);
-
-		auto const info = atp.ti->info_section();
-		ret["info"].preformatted().assign(info.data(), info.data() + info.size());
-		if (!atp.ti->comment().empty())
-			ret["comment"] = atp.ti->comment();
-		if (atp.ti->creation_date() != 0)
-			ret["creation date"] = atp.ti->creation_date();
-		if (!atp.ti->creator().empty())
-			ret["created by"] = atp.ti->creator();
-
-		if (!atp.merkle_trees.empty())
-		{
-			file_storage const& fs = atp.ti->files();
-			auto& trees = atp.merkle_trees;
-			if (int(trees.size()) != fs.num_files())
-				aux::throw_ex<system_error>(errors::torrent_missing_piece_layer);
-
-			auto& piece_layers = ret["piece layers"].dict();
-			std::vector<bool> const empty_verified;
-			for (file_index_t f : fs.file_range())
-			{
-				if (fs.pad_file_at(f) || fs.file_size(f) < fs.piece_length())
-					continue;
-
-				aux::merkle_tree t(fs.file_num_blocks(f)
-					, fs.piece_length() / default_block_size, fs.root_ptr(f));
-
-				std::vector<bool> const& verified = (f >= atp.verified_leaf_hashes.end_index())
-					? empty_verified : atp.verified_leaf_hashes[f];
-
-				auto const& tree = trees[f];
-				if (f < atp.merkle_tree_mask.end_index() && !atp.merkle_tree_mask[f].empty())
-				{
-					t.load_sparse_tree(tree, atp.merkle_tree_mask[f], verified);
-				}
-				else
-				{
-					t.load_tree(tree, verified);
-				}
-
-				auto const piece_layer = t.get_piece_layer();
-				if (int(piece_layer.size()) != fs.file_num_pieces(f))
-					aux::throw_ex<system_error>(errors::torrent_invalid_piece_layer);
-
-				auto& layer = piece_layers[t.root().to_string()].string();
-
-				for (auto const& h : piece_layer)
-					layer += h.to_string();
-			}
-		}
-		else if (atp.ti->v2())
-		{
-			// we must have piece layers for v2 torrents for them to be valid
-			// .torrent files
-			aux::throw_ex<system_error>(errors::torrent_missing_piece_layer);
-		}
-
-		// save web seeds
-		if (!atp.url_seeds.empty())
-		{
-			entry::list_type& url_list = ret["url-list"].list();
-			std::copy(atp.url_seeds.begin(), atp.url_seeds.end(), std::back_inserter(url_list));
-		}
-
-		if (!atp.http_seeds.empty())
-		{
-			entry::list_type& httpseeds_list = ret["httpseeds"].list();
-			std::copy(atp.http_seeds.begin(), atp.http_seeds.end(), std::back_inserter(httpseeds_list));
-		}
-
-		// save trackers
-		if (atp.trackers.size() == 1)
-			ret["announce"] = atp.trackers.front();
-		else if (atp.trackers.size() > 1)
-			ret["announce-list"] = build_tracker_list(atp.trackers, atp.tracker_tiers);
 
 		return ret;
 	}

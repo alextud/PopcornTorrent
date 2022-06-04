@@ -1,9 +1,6 @@
 /*
 
-Copyright (c) 2003, Daniel Wallin
-Copyright (c) 2004, Magnus Jonsson
-Copyright (c) 2004-2005, 2008-2009, 2013-2020, Arvid Norberg
-Copyright (c) 2016, Alden Torres
+Copyright (c) 2003-2018, Arvid Norberg, Daniel Wallin
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -184,22 +181,31 @@ namespace alert_category {
 
 } // namespace alert_category
 
-#include "libtorrent/aux_/disable_deprecation_warnings_push.hpp"
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 	// The ``alert`` class is the base class that specific messages are derived from.
 	// alert types are not copyable, and cannot be constructed by the client. The
 	// pointers returned by libtorrent are short lived (the details are described
 	// under session_handle::pop_alerts())
-	struct TORRENT_EXPORT alert
+	class TORRENT_EXPORT alert
 	{
-#include "libtorrent/aux_/disable_warnings_pop.hpp"
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+	public:
 
 		// hidden
-		TORRENT_UNEXPORT alert(alert const& rhs) = delete;
+		alert(alert const& rhs) = delete;
 		alert& operator=(alert const&) = delete;
 		alert(alert&& rhs) noexcept = default;
 
 #if TORRENT_ABI_VERSION == 1
+		// only here for backwards compatibility
+		enum TORRENT_DEPRECATED_ENUM severity_t { debug, info, warning, critical, fatal, none };
+
 		using category_t = alert_category_t;
 #endif
 
@@ -210,27 +216,18 @@ namespace alert_category {
 		static constexpr alert_category_t tracker_notification = 4_bit;
 		static constexpr alert_category_t connect_notification = 5_bit;
 #if TORRENT_ABI_VERSION == 1
-		TORRENT_DEPRECATED
-		static constexpr alert_category_t debug_notification = connect_notification;
+		static constexpr alert_category_t TORRENT_DEPRECATED_MEMBER debug_notification = connect_notification;
 #endif
 		static constexpr alert_category_t status_notification = 6_bit;
 #if TORRENT_ABI_VERSION == 1
-		// Alerts for when blocks are requested and completed. Also when
-		// pieces are completed.
-		TORRENT_DEPRECATED
-		static constexpr alert_category_t progress_notification = 7_bit;
+		static constexpr alert_category_t TORRENT_DEPRECATED_MEMBER progress_notification = 7_bit;
 #endif
 		static constexpr alert_category_t ip_block_notification = 8_bit;
 		static constexpr alert_category_t performance_warning = 9_bit;
 		static constexpr alert_category_t dht_notification = 10_bit;
-
-#if TORRENT_ABI_VERSION <= 2
-		// If you enable these alerts, you will receive a stats_alert
-		// approximately once every second, for every active torrent.
-		// These alerts contain all statistics counters for the interval since
-		// the lasts stats alert.
-		TORRENT_DEPRECATED
 		static constexpr alert_category_t stats_notification = 11_bit;
+#if TORRENT_ABI_VERSION == 1
+		static constexpr alert_category_t TORRENT_DEPRECATED_MEMBER rss_notification = 12_bit;
 #endif
 		static constexpr alert_category_t session_log_notification = 13_bit;
 		static constexpr alert_category_t torrent_log_notification = 14_bit;
@@ -247,7 +244,7 @@ namespace alert_category {
 		static constexpr alert_category_t all_categories = alert_category_t::all();
 
 		// hidden
-		TORRENT_UNEXPORT alert();
+		alert();
 		// hidden
 		virtual ~alert();
 
@@ -300,6 +297,27 @@ namespace alert_category {
 		// returns a bitmask specifying which categories this alert belong to.
 		virtual alert_category_t category() const noexcept = 0;
 
+#if TORRENT_ABI_VERSION == 1
+
+#include "libtorrent/aux_/disable_warnings_push.hpp"
+
+		// determines whether or not an alert is allowed to be discarded
+		// when the alert queue is full. There are a few alerts which may not be discarded,
+		// since they would break the user contract, such as save_resume_data_alert.
+		TORRENT_DEPRECATED
+		bool discardable() const { return discardable_impl(); }
+
+		TORRENT_DEPRECATED
+		severity_t severity() const { return warning; }
+
+	protected:
+
+		virtual bool discardable_impl() const { return true; }
+
+#include "libtorrent/aux_/disable_warnings_pop.hpp"
+
+#endif // TORRENT_ABI_VERSION
+
 	private:
 		time_point const m_timestamp;
 	};
@@ -310,7 +328,7 @@ namespace alert_category {
 //
 // .. note::
 //   ``alert_cast<>`` can only cast to an exact alert type, not a base class
-template <typename T> T* alert_cast(alert* a)
+template <class T> T* alert_cast(alert* a)
 {
 	static_assert(std::is_base_of<alert, T>::value
 		, "alert_cast<> can only be used with alert types (deriving from lt::alert)");
@@ -319,7 +337,7 @@ template <typename T> T* alert_cast(alert* a)
 	if (a->type() == T::alert_type) return static_cast<T*>(a);
 	return nullptr;
 }
-template <typename T> T const* alert_cast(alert const* a)
+template <class T> T const* alert_cast(alert const* a)
 {
 	static_assert(std::is_base_of<alert, T>::value
 		, "alert_cast<> can only be used with alert types (deriving from lt::alert)");

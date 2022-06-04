@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2010, 2014-2018, 2020, Arvid Norberg
-Copyright (c) 2018, Alden Torres
-Copyright (c) 2020, zywo
+Copyright (c) 2012-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -38,17 +36,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cstdint>
 #include <limits>
 
-#if TORRENT_HAS_PTHREAD_SET_NAME
-#include <pthread.h>
-#ifdef TORRENT_BSD
-#include <pthread_np.h>
-#endif
-#endif
-
-#ifdef TORRENT_BEOS
-#include <kernel/OS.h>
-#endif
-
 #include "libtorrent/aux_/disable_warnings_push.hpp"
 
 #if TORRENT_USE_RLIMIT
@@ -69,11 +56,9 @@ const rlim_t rlim_infinity = RLIM_INFINITY;
 
 #if defined TORRENT_WINDOWS
 #include "libtorrent/aux_/windows.hpp"
-#include "libtorrent/aux_/win_util.hpp"
 #endif
 
 #include "libtorrent/aux_/disable_warnings_pop.hpp"
-
 
 namespace libtorrent {
 
@@ -100,33 +85,55 @@ namespace libtorrent {
 #endif
 	}
 
-	void set_thread_name(char const* name)
+	std::int64_t total_physical_ram()
 	{
-		TORRENT_UNUSED(name);
-#if TORRENT_HAS_PTHREAD_SET_NAME
-#ifdef TORRENT_BSD
-		pthread_set_name_np(pthread_self(), name);
+#if defined TORRENT_BUILD_SIMULATOR
+		return std::int64_t(4) * 1024 * 1024 * 1024;
 #else
-		pthread_setname_np(pthread_self(), name);
-#endif
-#endif
-#ifdef TORRENT_WINDOWS
-		using SetThreadDescription_t = HRESULT (WINAPI*)(HANDLE, PCWSTR);
-		auto SetThreadDescription =
-			aux::get_library_procedure<aux::kernel32, SetThreadDescription_t>("SetThreadDescription");
-		if (SetThreadDescription) {
+		// figure out how much physical RAM there is in
+		// this machine. This is used for automatically
+		// sizing the disk cache size when it's set to
+		// automatic.
+		std::int64_t ret = 0;
 
-			wchar_t wide_name[50];
-			int i = -1;
-			do {
-				++i;
-				wide_name[i] = name[i];
-			} while (name[i] != 0);
-			SetThreadDescription(GetCurrentThread(), wide_name);
+#ifdef TORRENT_BSD
+#ifdef HW_MEMSIZE
+		int mib[2] = { CTL_HW, HW_MEMSIZE };
+#else
+		// not entirely sure this sysctl supports 64
+		// bit return values, but it's probably better
+		// than not building
+		int mib[2] = { CTL_HW, HW_PHYSMEM };
+#endif
+		std::size_t len = sizeof(ret);
+		if (sysctl(mib, 2, &ret, &len, nullptr, 0) != 0)
+			ret = 0;
+#elif defined TORRENT_WINDOWS
+		MEMORYSTATUSEX ms;
+		ms.dwLength = sizeof(MEMORYSTATUSEX);
+		if (GlobalMemoryStatusEx(&ms))
+			ret = ms.ullTotalPhys;
+		else
+			ret = 0;
+#elif defined TORRENT_LINUX
+		ret = sysconf(_SC_PHYS_PAGES);
+		ret *= sysconf(_SC_PAGESIZE);
+#elif defined TORRENT_AMIGA
+		ret = AvailMem(MEMF_PUBLIC);
+#endif
+
+#if TORRENT_USE_RLIMIT
+		if (ret > 0)
+		{
+			struct rlimit r{};
+			if (getrlimit(rlimit_as, &r) == 0 && r.rlim_cur != rlim_infinity)
+			{
+				if (ret > std::int64_t(r.rlim_cur))
+					ret = std::int64_t(r.rlim_cur);
+			}
 		}
 #endif
-#ifdef TORRENT_BEOS
-		rename_thread(find_thread(nullptr), name);
-#endif
+		return ret;
+#endif // TORRENT_BUILD_SIMULATOR
 	}
 }

@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2015, 2017, Steven Siloti
-Copyright (c) 2016-2019, Arvid Norberg
-Copyright (c) 2016-2018, Alden Torres
+Copyright (c) 2015-2018, Arvid Norberg, Steven Siloti
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -45,7 +43,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace libtorrent {
 
-struct bt_peer_connection;
+class bt_peer_connection;
 
 // the peer_connection_handle class provides a handle to the internal peer
 // connection object, to be used by plugins. This is a low level interface that

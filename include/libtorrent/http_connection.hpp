@@ -1,10 +1,6 @@
 /*
 
-Copyright (c) 2007-2020, Arvid Norberg
-Copyright (c) 2015, Mikhail Titov
-Copyright (c) 2016-2017, 2020, Alden Torres
-Copyright (c) 2017, Steven Siloti
-Copyright (c) 2020, Paul-Louis Ageneau
+Copyright (c) 2007-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -37,6 +33,17 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef TORRENT_HTTP_CONNECTION
 #define TORRENT_HTTP_CONNECTION
 
+#ifdef TORRENT_USE_OPENSSL
+// there is no forward declaration header for asio
+namespace boost {
+namespace asio {
+namespace ssl {
+	class context;
+}
+}
+}
+#endif
+
 #include <functional>
 #include <vector>
 #include <string>
@@ -49,16 +56,13 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/i2p_stream.hpp"
 #include "libtorrent/aux_/socket_type.hpp"
 #include "libtorrent/aux_/vector.hpp"
-#include "libtorrent/aux_/resolver_interface.hpp"
+#include "libtorrent/resolver_interface.hpp"
 #include "libtorrent/optional.hpp"
-#include "libtorrent/ssl.hpp"
 
 namespace libtorrent {
 
 struct http_connection;
-namespace aux { struct resolver_interface; }
-
-struct close_visitor;
+struct resolver_interface;
 
 // internal
 constexpr int default_max_bottled_buffer_size = 2 * 1024 * 1024;
@@ -76,17 +80,15 @@ using hostname_filter_handler = std::function<bool(http_connection&, string_view
 struct TORRENT_EXTRA_EXPORT http_connection
 	: std::enable_shared_from_this<http_connection>
 {
-	friend struct close_visitor;
-
-	http_connection(io_context& ios
-		, aux::resolver_interface& resolver
-		, http_handler handler
+	http_connection(io_service& ios
+		, resolver_interface& resolver
+		, http_handler const& handler
 		, bool bottled
 		, int max_bottled_buffer_size
-		, http_connect_handler ch
-		, http_filter_handler fh
-		, hostname_filter_handler hfh
-#if TORRENT_USE_SSL
+		, http_connect_handler const& ch
+		, http_filter_handler const& fh
+		, hostname_filter_handler const& hfh
+#ifdef TORRENT_USE_OPENSSL
 		, ssl::context* ssl_ctx
 #endif
 		);
@@ -108,7 +110,7 @@ struct TORRENT_EXTRA_EXPORT http_connection
 		, int prio = 0, aux::proxy_settings const* ps = nullptr, int handle_redirects = 5
 		, std::string const& user_agent = std::string()
 		, boost::optional<address> const& bind_addr = boost::optional<address>()
-		, aux::resolver_flags resolve_flags = aux::resolver_flags{}, std::string const& auth_ = std::string()
+		, resolver_flags resolve_flags = resolver_flags{}, std::string const& auth_ = std::string()
 #if TORRENT_USE_I2P
 		, i2p_connection* i2p_conn = nullptr
 #endif
@@ -118,7 +120,7 @@ struct TORRENT_EXTRA_EXPORT http_connection
 		, time_duration timeout, int prio = 0, aux::proxy_settings const* ps = nullptr
 		, bool ssl = false, int handle_redirect = 5
 		, boost::optional<address> const& bind_addr = boost::optional<address>()
-		, aux::resolver_flags resolve_flags = aux::resolver_flags{}
+		, resolver_flags resolve_flags = resolver_flags{}
 #if TORRENT_USE_I2P
 		, i2p_connection* i2p_conn = nullptr
 #endif
@@ -126,7 +128,7 @@ struct TORRENT_EXTRA_EXPORT http_connection
 
 	void close(bool force = false);
 
-	aux::socket_type const& socket() const { return *m_sock; }
+	aux::socket_type const& socket() const { return m_sock; }
 
 	std::vector<tcp::endpoint> const& endpoints() const { return m_endpoints; }
 
@@ -152,7 +154,6 @@ private:
 	void callback(error_code e, span<char> data = {});
 
 	aux::vector<char> m_recvbuffer;
-	io_context& m_ios;
 
 	std::string m_hostname;
 	std::string m_url;
@@ -164,16 +165,16 @@ private:
 	// endpoint with this index (in m_endpoints) next
 	int m_next_ep;
 
-	boost::optional<aux::socket_type> m_sock;
+	aux::socket_type m_sock;
 
-#if TORRENT_USE_SSL
+#ifdef TORRENT_USE_OPENSSL
 	ssl::context* m_ssl_ctx;
 #endif
 
 #if TORRENT_USE_I2P
 	i2p_connection* m_i2p_conn;
 #endif
-	aux::resolver_interface& m_resolver;
+	resolver_interface& m_resolver;
 
 	http_parser m_parser;
 	http_handler m_handler;
@@ -222,7 +223,7 @@ private:
 	int m_priority;
 
 	// used for DNS lookups
-	aux::resolver_flags m_resolve_flags;
+	resolver_flags m_resolve_flags;
 
 	std::uint16_t m_port;
 

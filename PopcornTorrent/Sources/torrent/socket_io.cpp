@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2009-2010, 2013-2014, 2017, 2019, Arvid Norberg
-Copyright (c) 2016, 2018, Alden Torres
+Copyright (c) 2009-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -45,14 +44,15 @@ namespace libtorrent {
 
 	std::string print_address(address const& addr)
 	{
-		return addr.to_string();
+		error_code ec;
+		return addr.to_string(ec);
 	}
 
 	std::string address_to_bytes(address const& a)
 	{
 		std::string ret;
 		std::back_insert_iterator<std::string> out(ret);
-		aux::write_address(a, out);
+		detail::write_address(a, out);
 		return ret;
 	}
 
@@ -60,17 +60,18 @@ namespace libtorrent {
 	{
 		std::string ret;
 		std::back_insert_iterator<std::string> out(ret);
-		aux::write_endpoint(ep, out);
+		detail::write_endpoint(ep, out);
 		return ret;
 	}
 
 	std::string print_endpoint(address const& addr, int port)
 	{
+		error_code ec;
 		char buf[200];
 		if (addr.is_v6())
-			std::snprintf(buf, sizeof(buf), "[%s]:%d", addr.to_string().c_str(), port);
+			std::snprintf(buf, sizeof(buf), "[%s]:%d", addr.to_string(ec).c_str(), port);
 		else
-			std::snprintf(buf, sizeof(buf), "%s:%d", addr.to_string().c_str(), port);
+			std::snprintf(buf, sizeof(buf), "%s:%d", addr.to_string(ec).c_str(), port);
 		return buf;
 	}
 

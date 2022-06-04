@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2006-2007, 2010, 2013-2020, Arvid Norberg
-Copyright (c) 2016, Alden Torres
+Copyright (c) 2003-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -45,11 +44,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace libtorrent {
 
-#include "libtorrent/aux_/disable_deprecation_warnings_push.hpp"
-
 	using dht_settings = dht::dht_settings;
-
-#include "libtorrent/aux_/disable_warnings_pop.hpp"
 
 	using aux::proxy_settings;
 

@@ -1,9 +1,6 @@
 /*
 
-Copyright (c) 2012, 2014-2020, Arvid Norberg
-Copyright (c) 2016-2018, Alden Torres
-Copyright (c) 2017, Andrei Kurushin
-Copyright (c) 2017, Pavel Pimenov
+Copyright (c) 2012-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -388,12 +385,6 @@ namespace libtorrent {
 			++pos;
 		}
 		return {last.substr(0, pos), last.substr(pos + found_sep)};
-	}
-
-	void ltrim(std::string& s)
-	{
-		while (!s.empty() && is_space(s.front()))
-			s.erase(s.begin());
 	}
 
 #if TORRENT_USE_I2P

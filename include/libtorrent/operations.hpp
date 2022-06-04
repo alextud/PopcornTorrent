@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2015, 2017-2020, Arvid Norberg
-Copyright (c) 2016, Alden Torres
+Copyright (c) 2015-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -174,20 +173,8 @@ namespace libtorrent {
 		// set socket option
 		sock_option,
 
-		// enumeration of network routes
+		// enumeration network routes
 		enum_route,
-
-		// moving read/write position in a file, operation_t::hostname_lookup
-		file_seek,
-
-		// an async wait operation on a timer
-		timer,
-
-		// call to mmap() (or windows counterpart)
-		file_mmap,
-
-		// call to ftruncate() (or SetEndOfFile() on windows)
-		file_truncate,
 	};
 
 	// maps an operation id (from peer_error_alert and peer_disconnected_alert)

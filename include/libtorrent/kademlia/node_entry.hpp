@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2006, 2008-2009, 2013-2016, 2019, Arvid Norberg
-Copyright (c) 2015, Steven Siloti
-Copyright (c) 2016, Alden Torres
+Copyright (c) 2006-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,8 +40,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/time.hpp" // for time_point
 #include "libtorrent/aux_/time.hpp" // for time_now
 
-namespace libtorrent {
-namespace dht {
+namespace libtorrent { namespace dht {
 
 struct TORRENT_EXTRA_EXPORT node_entry
 {
@@ -91,7 +88,6 @@ struct TORRENT_EXTRA_EXPORT node_entry
 	bool verified = false;
 };
 
-} // namespace dht
-} // namespace libtorrent
+} } // namespace libtorrent::dht
 
 #endif

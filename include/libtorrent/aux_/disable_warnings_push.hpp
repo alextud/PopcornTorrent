@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2015-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2016-2017, 2019, Alden Torres
+Copyright (c) 2015, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -108,6 +107,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #pragma warning(disable : 4548)
 // 'conversion' conversion from 'type1' to 'type2', possible loss of data
 #pragma warning(disable : 4244)
-// potentially uninitialized local variable 'result' used
+// potentially uninitialized local variable '' used
 #pragma warning(disable : 4701)
 #endif

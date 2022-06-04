@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2011-2012, 2014-2015, 2017-2020, Arvid Norberg
-Copyright (c) 2016, 2019, Alden Torres
-Copyright (c) 2017, 2019, Andrei Kurushin
+Copyright (c) 2011-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -35,24 +33,17 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/config.hpp"
 #include "libtorrent/random.hpp"
 #include "libtorrent/error_code.hpp"
+#include "libtorrent/aux_/openssl.hpp"
 #include "libtorrent/aux_/throw.hpp"
 
 #if defined BOOST_NO_CXX11_THREAD_LOCAL
 #include <mutex>
 #endif
 
-#if TORRENT_BROKEN_RANDOM_DEVICE
-#include "libtorrent/time.hpp"
-#include <atomic>
-#endif
-
-#if TORRENT_USE_CNG
-#include "libtorrent/aux_/win_cng.hpp"
-
-#elif TORRENT_USE_CRYPTOAPI
+#if TORRENT_USE_CRYPTOAPI
 #include "libtorrent/aux_/win_crypto_provider.hpp"
 
-#elif defined TORRENT_USE_LIBCRYPTO && !defined TORRENT_USE_WOLFSSL
+#elif defined TORRENT_USE_LIBCRYPTO
 
 #include "libtorrent/aux_/disable_warnings_push.hpp"
 extern "C" {
@@ -128,25 +119,18 @@ namespace aux {
 #ifdef TORRENT_BUILD_SIMULATOR
 			// In the simulator we want deterministic random numbers
 			std::generate(buffer.begin(), buffer.end(), [] { return char(random(0xff)); });
-#elif TORRENT_USE_CNG
-			aux::cng_gen_random(buffer);
 #elif TORRENT_USE_CRYPTOAPI
 			// windows
 			aux::crypt_gen_random(buffer);
-#elif defined TORRENT_USE_LIBCRYPTO && !defined TORRENT_USE_WOLFSSL
-// wolfSSL uses wc_RNG_GenerateBlock as the internal function for the
-// openssl compatibility layer. This function API does not support
-// an arbitrary buffer size (openssl does), it is limited by the
-// constant RNG_MAX_BLOCK_LEN.
-// TODO: improve calling RAND_bytes multiple times, using fallback for now
-
+#elif defined TORRENT_USE_LIBCRYPTO
 			// openssl
 			int r = RAND_bytes(reinterpret_cast<unsigned char*>(buffer.data())
 				, int(buffer.size()));
 			if (r != 1) aux::throw_ex<system_error>(errors::no_entropy);
 #elif TORRENT_USE_GETRANDOM
-			ssize_t const r = ::getrandom(buffer.data(), static_cast<std::size_t>(buffer.size()), 0);
-			if (r == ssize_t(buffer.size())) return;
+			ssize_t const r = ::getrandom(buffer.data(), buffer.size(), 0);
+			if (r == buffer.size()) return;
+
 			if (r == -1 && errno != ENOSYS) aux::throw_ex<system_error>(error_code(errno, generic_category()));
 			static dev_random dev;
 			dev.read(buffer);
@@ -173,7 +157,6 @@ namespace aux {
 
 	std::uint32_t random(std::uint32_t const max)
 	{
-		if (max == 0) return 0;
 #ifdef BOOST_NO_CXX11_THREAD_LOCAL
 		std::lock_guard<std::mutex> l(rng_mutex);
 #endif

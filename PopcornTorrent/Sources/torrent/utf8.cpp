@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2017, Andrei Kurushin
-Copyright (c) 2012, 2015-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2017, Alden Torres
+Copyright (c) 2012-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -50,13 +48,13 @@ namespace {
 	int utf8_sequence_length(char const c)
 	{
 		auto const b = static_cast<std::uint8_t>(c);
-		if (b < 0b10000000) return 1;
-		if ((b >> 5) == 0b110) return 2;
-		if ((b >> 4) == 0b1110) return 3;
-		if ((b >> 3) == 0b11110) return 4;
+		if (b < 0x80) return 1;
+		if ((b >> 5) == 0x06) return 2;
+		if ((b >> 4) == 0x0e) return 3;
+		if ((b >> 3) == 0x1e) return 4;
 		// this is an invalid prefix, but we still parse it to skip this many
 		// bytes
-		if ((b >> 2) == 0b111110) return 5;
+		if ((b >> 2) == 0x3e) return 5;
 		return 0;
 	}
 
@@ -87,18 +85,18 @@ namespace {
 				ret.push_back(static_cast<char>(codepoint));
 				break;
 			case 2:
-				ret.push_back(static_cast<char>(0b11000000 | (codepoint >> 6)));
+				ret.push_back(static_cast<char>(0xc0 | (codepoint >> 6)));
 				break;
 			case 3:
-				ret.push_back(static_cast<char>(0b11100000 | (codepoint >> 12)));
+				ret.push_back(static_cast<char>(0xe0 | (codepoint >> 12)));
 				break;
 			case 4:
-				ret.push_back(static_cast<char>(0b11110000 | (codepoint >> 18)));
+				ret.push_back(static_cast<char>(0xf0 | (codepoint >> 18)));
 				break;
 		}
 
 		for (int i = seq_len - 2; i >= 0; --i)
-			ret.push_back(static_cast<char>(0b10000000 | ((codepoint >> (6 * i)) & 0b111111)));
+			ret.push_back(static_cast<char>(0x80 | ((codepoint >> (6 * i)) & 0x3f)));
 	}
 
 	// returns the unicode codepoint and the number of bytes of the utf8 sequence
@@ -128,26 +126,26 @@ namespace {
 		switch (sequence_len)
 		{
 			case 1:
-				ch = str[0] & 0b01111111;
+				ch = str[0] & 0x7f;
 				break;
 			case 2:
-				ch = str[0] & 0b00011111;
+				ch = str[0] & 0x1f;
 				break;
 			case 3:
-				ch = str[0] & 0b00001111;
+				ch = str[0] & 0x0f;
 				break;
 			case 4:
-				ch = str[0] & 0b00000111;
+				ch = str[0] & 0x07;
 				break;
 		}
 		for (int i = 1; i < sequence_len; ++i)
 		{
 			auto const b = static_cast<std::uint8_t>(str[static_cast<std::size_t>(i)]);
 			// continuation bytes must start with 10xxxxxx
-			if (b > 0b10111111 || b < 0b10000000)
+			if (b > 0xbf || b < 0x80)
 				return std::make_pair(-1, sequence_len);
 			ch <<= 6;
-			ch += b & 0b111111;
+			ch += b & 0x3f;
 		}
 
 		// check if the sequence is overlong, i.e. whether it has leading

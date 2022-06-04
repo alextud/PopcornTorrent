@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2007-2010, 2012-2020, Arvid Norberg
-Copyright (c) 2016-2017, Alden Torres
-Copyright (c) 2018, Steven Siloti
+Copyright (c) 2007-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -48,20 +46,10 @@ namespace libtorrent {
 	{
 		if (!handle.is_valid()) return "";
 
-		std::string ret = "magnet:?";
-
-		if (handle.info_hashes().has_v1())
-		{
-			ret += "xt=urn:btih:";
-			ret += aux::to_hex(handle.info_hashes().v1);
-		}
-
-		if (handle.info_hashes().has_v2())
-		{
-			if (handle.info_hashes().has_v1()) ret += '&';
-			ret += "xt=urn:btmh:1220";
-			ret += aux::to_hex(handle.info_hashes().v2);
-		}
+		std::string ret;
+		sha1_hash const& ih = handle.info_hash();
+		ret += "magnet:?xt=urn:btih:";
+		ret += aux::to_hex(ih);
 
 		torrent_status st = handle.status(torrent_handle::query_name);
 		if (!st.name.empty())
@@ -87,20 +75,10 @@ namespace libtorrent {
 
 	std::string make_magnet_uri(torrent_info const& info)
 	{
-		std::string ret = "magnet:?";
-
-		if (info.info_hashes().has_v1())
-		{
-			ret += "xt=urn:btih:";
-			ret += aux::to_hex(info.info_hashes().v1);
-		}
-
-		if (info.info_hashes().has_v2())
-		{
-			if (info.info_hashes().has_v1()) ret += '&';
-			ret += "xt=urn:btmh:1220";
-			ret += aux::to_hex(info.info_hashes().v2);
-		}
+		std::string ret;
+		sha1_hash const& ih = info.info_hash();
+		ret += "magnet:?xt=urn:btih:";
+		ret += aux::to_hex(ih);
 
 		std::string const& name = info.name();
 
@@ -151,12 +129,14 @@ namespace libtorrent {
 		, std::string const& save_path
 		, storage_mode_t storage_mode
 		, bool paused
-		, void*)
+		, storage_constructor_type sc
+		, void* userdata)
 	{
-		add_torrent_params params;
+		add_torrent_params params(std::move(sc));
 		error_code ec;
 		parse_magnet_uri(uri, params, ec);
 		params.storage_mode = storage_mode;
+		params.userdata = userdata;
 		params.save_path = save_path;
 
 		if (paused) params.flags |= add_torrent_params::flag_paused;
@@ -197,7 +177,7 @@ namespace libtorrent {
 		sv = sv.substr(8);
 
 		int tier = 0;
-		bool has_ih[2] = { false, false };
+		bool has_ih = false;
 		while (!sv.empty())
 		{
 			string_view name;
@@ -250,51 +230,28 @@ namespace libtorrent {
 					value = unescaped_btih;
 				}
 
-				if (value.substr(0, 9) == "urn:btih:")
+				if (value.substr(0, 9) != "urn:btih:") continue;
+				value = value.substr(9);
+
+				sha1_hash info_hash;
+				if (value.size() == 40) aux::from_hex({value.data(), 40}, info_hash.data());
+				else if (value.size() == 32)
 				{
-					value = value.substr(9);
-
-					sha1_hash info_hash;
-					if (value.size() == 40) aux::from_hex(value, info_hash.data());
-					else if (value.size() == 32)
-					{
-						std::string const ih = base32decode(value);
-						if (ih.size() != 20)
-						{
-							ec = errors::invalid_info_hash;
-							return;
-						}
-						info_hash.assign(ih);
-					}
-					else
+					std::string const ih = base32decode(value);
+					if (ih.size() != 20)
 					{
 						ec = errors::invalid_info_hash;
 						return;
 					}
-					p.info_hashes.v1 = info_hash;
-					has_ih[0] = true;
+					info_hash.assign(ih);
 				}
-				else if (value.substr(0, 9) == "urn:btmh:")
+				else
 				{
-					value = value.substr(9);
-
-					// hash must be sha256
-					if (value.substr(0, 4) != "1220")
-					{
-						ec = errors::invalid_info_hash;
-						return;
-					}
-
-					value = value.substr(4);
-
-					if (value.size() != 64)
-					{
-						ec = errors::invalid_info_hash;
-						return;
-					}
-					aux::from_hex(value, p.info_hashes.v2.data());
-					has_ih[1] = true;
+					ec = errors::invalid_info_hash;
+					return;
 				}
+				p.info_hash = info_hash;
+				has_ih = true;
 			}
 			else if (string_equal_no_case(name, "so"_sv)) // select-only (files)
 			{
@@ -368,15 +325,12 @@ namespace libtorrent {
 #endif
 		}
 
-		if (!has_ih[0] && !has_ih[1])
+		if (!has_ih)
 		{
 			ec = errors::missing_info_hash_in_uri;
 			return;
 		}
 
-#if TORRENT_ABI_VERSION < 3
-		p.info_hash = p.info_hashes.get_best();
-#endif
 		if (!display_name.empty()) p.name = display_name;
 	}
 

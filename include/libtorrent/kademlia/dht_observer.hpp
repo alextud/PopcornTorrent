@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2012, 2014-2017, 2019, Arvid Norberg
-Copyright (c) 2014, 2017-2018, Steven Siloti
-Copyright (c) 2016, Alden Torres
+Copyright (c) 2012-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -45,9 +43,7 @@ namespace libtorrent {
 
 class entry;
 
-namespace aux {
-struct listen_socket_handle;
-}
+namespace aux { struct listen_socket_handle; }
 
 namespace dht {
 
@@ -94,7 +90,6 @@ namespace dht {
 	protected:
 		~dht_observer() = default;
 	};
-}
-}
+}}
 
 #endif

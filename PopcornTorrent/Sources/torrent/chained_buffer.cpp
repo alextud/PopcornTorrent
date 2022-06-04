@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2011, 2014, 2016-2019, Arvid Norberg
-Copyright (c) 2016-2018, Alden Torres
+Copyright (c) 2007-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -31,13 +30,12 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#include "libtorrent/aux_/chained_buffer.hpp"
+#include "libtorrent/chained_buffer.hpp"
 #include "libtorrent/assert.hpp"
 
 #include <algorithm> // for copy
 
 namespace libtorrent {
-namespace aux {
 
 	void chained_buffer::pop_front(int bytes_to_pop)
 	{
@@ -170,5 +168,4 @@ namespace aux {
 #endif
 	}
 
-}
 }

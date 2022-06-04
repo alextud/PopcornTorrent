@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2016, Alden Torres
-Copyright (c) 2003, 2006, 2013-2020, Arvid Norberg
+Copyright (c) 2003-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -67,8 +66,18 @@ namespace aux {
 
 #if TORRENT_ABI_VERSION == 1
 
-#include "libtorrent/aux_/disable_deprecation_warnings_push.hpp"
-
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+#ifdef _MSC_VER
+#pragma warning(push, 1)
+#pragma warning(disable: 4996)
+#endif
 	// Returns an optional fingerprint if any can be identified from the peer
 	// id. This can be used to automate the identification of clients. It will
 	// not be able to identify peers with non- standard encodings. Only Azureus
@@ -77,7 +86,15 @@ namespace aux {
 	boost::optional<fingerprint>
 		client_fingerprint(peer_id const& p);
 
-#include "libtorrent/aux_/disable_warnings_pop.hpp"
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 #endif // TORRENT_ABI_VERSION
 

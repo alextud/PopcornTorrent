@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2016, Steven Siloti
-Copyright (c) 2019, Arvid Norberg
+Copyright (c) 2006-2016, Arvid Norberg, Steven Siloti
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -37,8 +36,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/kademlia/node_id.hpp"
 #include "libtorrent/socket_io.hpp"
 
-namespace libtorrent {
-namespace dht {
+namespace libtorrent { namespace dht {
 
 	struct node_endpoint
 	{
@@ -53,13 +51,12 @@ namespace dht {
 		std::copy(in, in + 20, ep.id.begin());
 		in += 20;
 		if (protocol == udp::v6())
-			ep.ep = aux::read_v6_endpoint<udp::endpoint>(in);
+			ep.ep = detail::read_v6_endpoint<udp::endpoint>(in);
 		else
-			ep.ep = aux::read_v4_endpoint<udp::endpoint>(in);
+			ep.ep = detail::read_v4_endpoint<udp::endpoint>(in);
 		return ep;
 	}
 
-}
-}
+}}
 
 #endif

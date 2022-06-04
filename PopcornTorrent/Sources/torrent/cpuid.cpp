@@ -1,9 +1,6 @@
 /*
 
-Copyright (c) 2015-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2016, Andrei Kurushin
-Copyright (c) 2016-2018, Alden Torres
-Copyright (c) 2018, Alexandre Janniaux
+Copyright (c) 2014-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -76,16 +73,16 @@ unsigned long int helper_getauxval(unsigned long int type)
 #endif
 #endif // TORRENT_HAS_ARM && TORRENT_HAS_AUXV
 
-namespace libtorrent {
-namespace aux {
-namespace {
+namespace libtorrent { namespace aux {
+
+	namespace {
 
 #if TORRENT_HAS_SSE
 	// internal
-	void cpuid(std::uint32_t* info, int type) noexcept
+	void cpuid(std::uint32_t* info, int type)
 	{
 #if defined _MSC_VER
-		__cpuid(reinterpret_cast<int*>(info), type);
+		__cpuid((int*)info, type);
 
 #elif defined __GNUC__
 		__get_cpuid(std::uint32_t(type), &info[0], &info[1], &info[2], &info[3]);
@@ -97,7 +94,7 @@ namespace {
 	}
 #endif
 
-	bool supports_sse42() noexcept
+	bool supports_sse42()
 	{
 #if TORRENT_HAS_SSE
 		std::uint32_t cpui[4] = {0};
@@ -108,7 +105,7 @@ namespace {
 #endif
 	}
 
-	bool supports_mmx() noexcept
+	bool supports_mmx()
 	{
 #if TORRENT_HAS_SSE
 		std::uint32_t cpui[4] = {0};
@@ -119,7 +116,7 @@ namespace {
 #endif
 	}
 
-	bool supports_arm_neon() noexcept
+	bool supports_arm_neon()
 	{
 #if TORRENT_HAS_ARM_NEON && TORRENT_HAS_AUXV
 #if defined __arm__
@@ -136,7 +133,7 @@ namespace {
 #endif
 	}
 
-	bool supports_arm_crc32c() noexcept
+	bool supports_arm_crc32c()
 	{
 #if TORRENT_HAS_ARM_CRC32 && TORRENT_HAS_AUXV
 #if defined TORRENT_FORCE_ARM_CRC32
@@ -153,7 +150,7 @@ namespace {
 #endif
 	}
 
-} // anonymous namespace
+	} // anonymous namespace
 
 	bool const sse42_support = supports_sse42();
 	bool const mmx_support = supports_mmx();

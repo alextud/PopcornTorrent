@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2017, Alden Torres
-Copyright (c) 2018-2020, Arvid Norberg
+Copyright (c) 2017, Arvid Norberg, Alden Torres
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -54,7 +53,12 @@ namespace libtorrent { namespace aux {
 		unique_ptr() = default;
 		explicit unique_ptr(T* arr) : base(arr) {}
 
-		decltype(auto) operator[](IndexType idx) const
+		auto operator[](IndexType idx) const ->
+#if TORRENT_AUTO_RETURN_TYPES
+			decltype(auto)
+#else
+			decltype(this->base::operator[](underlying_index()))
+#endif
 		{
 			TORRENT_ASSERT(idx >= IndexType(0));
 			return this->base::operator[](std::size_t(static_cast<underlying_index>(idx)));

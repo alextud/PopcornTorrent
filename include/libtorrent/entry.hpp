@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2003-2009, 2013-2020, Arvid Norberg
-Copyright (c) 2016-2017, Alden Torres
+Copyright (c) 2003-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -76,15 +75,52 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/span.hpp"
 #include "libtorrent/string_view.hpp"
 #include "libtorrent/aux_/aligned_union.hpp"
-#include "libtorrent/aux_/strview_less.hpp"
 
 namespace libtorrent {
 
 #if TORRENT_ABI_VERSION == 1
+	struct lazy_entry;
 	// backwards compatibility
 	using type_error = system_error;
 #endif
 	struct bdecode_node;
+
+namespace aux {
+
+#if !defined TORRENT_CXX11_ABI && (__cplusplus > 201103) || (defined _MSC_VER && _MSC_VER >= 1900)
+		// this enables us to compare a string_view against the std::string that's
+		// held by the std::map
+		// is_transparent was introduced in C++14
+		struct strview_less
+		{
+			using is_transparent = std::true_type;
+			template <typename T1, typename T2>
+			bool operator()(T1 const& rhs, T2 const& lhs) const
+			{ return rhs < lhs; }
+		};
+
+		template<class T> using map_string = std::map<std::string, T, aux::strview_less>;
+#else
+		template<class T>
+		struct map_string : std::map<std::string, T>
+		{
+			using base = std::map<std::string, T>;
+			using base::base;
+			map_string() = default;
+			map_string(base&& rhs) : base(std::move(rhs)) {}
+
+			typename base::iterator find(const string_view& key)
+			{
+				return this->base::find(key.to_string());
+			}
+
+			typename base::const_iterator find(const string_view& key) const
+			{
+				return this->base::find(key.to_string());
+			}
+		};
+#endif
+	}
 
 	// The ``entry`` class represents one node in a bencoded hierarchy. It works as a
 	// variant type, it can be either a list, a dictionary (``std::map``), an integer
@@ -96,7 +132,7 @@ namespace libtorrent {
 		// the key is always a string. If a generic entry would be allowed
 		// as a key, sorting would become a problem (e.g. to compare a string
 		// to a list). The definition doesn't mention such a limit though.
-		using dictionary_type = std::map<std::string, entry, aux::strview_less>;
+		using dictionary_type = aux::map_string<entry>;
 		using string_type = std::string;
 		using list_type = std::vector<entry>;
 		using integer_type = std::int64_t;
@@ -121,11 +157,6 @@ namespace libtorrent {
 		// newly constructed entry
 		entry(dictionary_type); // NOLINT
 		entry(span<char const>); // NOLINT
-		entry(list_type); // NOLINT
-		entry(integer_type); // NOLINT
-		entry(preformatted_type); // NOLINT
-
-		// hidden
 		template <typename U, typename Cond = typename std::enable_if<
 			std::is_same<U, entry::string_type>::value
 			|| std::is_same<U, string_view>::value
@@ -139,6 +170,9 @@ namespace libtorrent {
 			new(&data) string_type(std::move(v));
 			m_type = string_t;
 		}
+		entry(list_type); // NOLINT
+		entry(integer_type); // NOLINT
+		entry(preformatted_type); // NOLINT
 
 		// construct an empty entry of the specified type.
 		// see data_type enum.
@@ -159,16 +193,14 @@ namespace libtorrent {
 
 		// copies the structure of the right hand side into this
 		// entry.
+#if TORRENT_ABI_VERSION == 1
+		entry& operator=(lazy_entry const&) &;
+#endif
 		entry& operator=(bdecode_node const&) &;
 		entry& operator=(entry const&) &;
 		entry& operator=(entry&&) & noexcept;
 		entry& operator=(dictionary_type) &;
 		entry& operator=(span<char const>) &;
-		entry& operator=(list_type) &;
-		entry& operator=(integer_type) &;
-		entry& operator=(preformatted_type) &;
-
-		// hidden
 		template <typename U, typename Cond = typename std::enable_if<
 			std::is_same<U, entry::string_type>::value
 			|| std::is_same<U, char const*>::value>::type>
@@ -182,6 +214,9 @@ namespace libtorrent {
 #endif
 			return *this;
 		}
+		entry& operator=(list_type) &;
+		entry& operator=(integer_type) &;
+		entry& operator=(preformatted_type) &;
 
 		// The ``integer()``, ``string()``, ``list()`` and ``dict()`` functions
 		// are accessors that return the respective type. If the ``entry`` object
@@ -231,15 +266,15 @@ namespace libtorrent {
 		// To make it easier to extract information from a torrent file, the
 		// class torrent_info exists.
 		integer_type& integer();
-		integer_type const& integer() const;
+		const integer_type& integer() const;
 		string_type& string();
-		string_type const& string() const;
+		const string_type& string() const;
 		list_type& list();
-		list_type const& list() const;
+		const list_type& list() const;
 		dictionary_type& dict();
-		dictionary_type const& dict() const;
+		const dictionary_type& dict() const;
 		preformatted_type& preformatted();
-		preformatted_type const& preformatted() const;
+		const preformatted_type& preformatted() const;
 
 		// swaps the content of *this* with ``e``.
 		void swap(entry& e);
@@ -256,7 +291,7 @@ namespace libtorrent {
 		// existing element at the given key. If the key is not found, it will
 		// throw ``system_error``.
 		entry& operator[](string_view key);
-		entry const& operator[](string_view key) const;
+		const entry& operator[](string_view key) const;
 
 		// These functions requires the entry to be a dictionary, if it isn't
 		// they will throw ``system_error``.
@@ -301,7 +336,6 @@ namespace libtorrent {
 		std::uint8_t m_type:7;
 
 	public:
-		// hidden
 		// in debug mode this is set to false by bdecode to indicate that the
 		// program has not yet queried the type of this entry, and should not
 		// assume that it has a certain type. This is asserted in the accessor
@@ -313,10 +347,10 @@ namespace libtorrent {
 	TORRENT_EXPORT bool operator==(entry const& lhs, entry const& rhs);
 	inline bool operator!=(entry const& lhs, entry const& rhs) { return !(lhs == rhs); }
 
-namespace aux {
+namespace detail {
 
 	// internal
-	TORRENT_EXPORT string_view integer_to_str(std::array<char, 21>& buf
+	TORRENT_EXPORT string_view integer_to_str(span<char> buf
 		, entry::integer_type val);
 }
 

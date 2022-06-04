@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2006, Daniel Wallin
-Copyright (c) 2006-2010, 2013-2019, Arvid Norberg
-Copyright (c) 2016, Alden Torres
+Copyright (c) 2006-2018, Arvid Norberg & Daniel Wallin
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -43,8 +41,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <vector>
 #include <map>
 
-namespace libtorrent {
-namespace dht {
+namespace libtorrent { namespace dht {
 
 class node;
 
@@ -55,7 +52,7 @@ struct find_data : traversal_algorithm
 	using nodes_callback = std::function<void(std::vector<std::pair<node_entry, std::string>> const&)>;
 
 	find_data(node& dht_node, node_id const& target
-		, nodes_callback ncallback);
+		, nodes_callback const& ncallback);
 
 	void got_write_token(node_id const& n, std::string write_token);
 
@@ -85,7 +82,6 @@ struct find_data_observer : traversal_observer
 	void reply(msg const&) override;
 };
 
-} // namespace dht
-} // namespace libtorrent
+} } // namespace libtorrent::dht
 
 #endif // FIND_DATA_050323_HPP

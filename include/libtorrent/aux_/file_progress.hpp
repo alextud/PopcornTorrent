@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2015-2020, Arvid Norberg
-Copyright (c) 2019, Alden Torres
+Copyright (c) 2015, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -44,17 +43,17 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #if TORRENT_USE_INVARIANT_CHECKS
 #include "libtorrent/bitfield.hpp"
-#include "libtorrent/aux_/invariant_check.hpp"
+#include "libtorrent/invariant_check.hpp"
 #endif
 
 #if TORRENT_USE_INVARIANT_CHECKS
-#include "libtorrent/aux_/invariant_check.hpp"
+#include "libtorrent/invariant_check.hpp"
 #include "libtorrent/bitfield.hpp"
 #endif
 
 namespace libtorrent {
 
-struct piece_picker;
+class piece_picker;
 class file_storage;
 
 namespace aux {
@@ -68,11 +67,6 @@ namespace aux {
 
 		void export_progress(vector<std::int64_t, file_index_t> &fp);
 
-		std::int64_t total_on_disk() const
-		{
-			return m_total_on_disk;
-		}
-
 		bool empty() const { return m_file_progress.empty(); }
 		void clear();
 
@@ -80,9 +74,6 @@ namespace aux {
 			, std::function<void(file_index_t)> const& completed_cb);
 
 	private:
-
-		// the total number of bytes downloaded to non-pad files
-		std::int64_t m_total_on_disk = 0;
 
 		// this vector contains the number of bytes completely
 		// downloaded (as in passed-hash-check) in each file.
@@ -92,7 +83,7 @@ namespace aux {
 		vector<std::int64_t, file_index_t> m_file_progress;
 
 #if TORRENT_USE_INVARIANT_CHECKS
-		friend struct libtorrent::invariant_access;
+		friend class libtorrent::invariant_access;
 		void check_invariant() const;
 
 		// this is used to assert we never add the same piece twice
@@ -101,7 +92,6 @@ namespace aux {
 		// to make sure we never say we've downloaded more bytes of a file than
 		// its file size
 		vector<std::int64_t, file_index_t> m_file_sizes;
-		vector<bool, file_index_t> m_pad_file;
 #endif
 	};
 } }

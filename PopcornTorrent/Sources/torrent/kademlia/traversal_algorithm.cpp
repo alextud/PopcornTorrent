@@ -1,10 +1,6 @@
 /*
 
-Copyright (c) 2006, Daniel Wallin
-Copyright (c) 2006-2017, 2019, Arvid Norberg
-Copyright (c) 2015-2016, Steven Siloti
-Copyright (c) 2016-2017, Pavel Pimenov
-Copyright (c) 2016-2018, Alden Torres
+Copyright (c) 2006-2018, Arvid Norberg & Daniel Wallin
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -38,8 +34,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <libtorrent/kademlia/rpc_manager.hpp>
 #include <libtorrent/kademlia/node.hpp>
 #include <libtorrent/kademlia/dht_observer.hpp> // for dht_logger
-#include <libtorrent/kademlia/dht_settings.hpp>
 #include <libtorrent/kademlia/io.hpp>
+#include <libtorrent/session_status.hpp>
 #include <libtorrent/socket_io.hpp> // for read_*_endpoint
 #include <libtorrent/alert_types.hpp> // for dht_lookup
 #include <libtorrent/aux_/time.hpp>
@@ -185,14 +181,14 @@ void traversal_algorithm::add_entry(node_id const& id
 		{
 			// this IP restriction does not apply to the nodes we loaded from out
 			// node cache
-			if (m_node.settings().get_bool(settings_pack::dht_restrict_search_ips)
+			if (m_node.settings().restrict_search_ips
 				&& !(flags & observer::flag_initial))
 			{
 				if (o->target_addr().is_v6())
 				{
 					address_v6::bytes_type addr_bytes = o->target_addr().to_v6().to_bytes();
 					auto prefix_it = addr_bytes.cbegin();
-					std::uint64_t const prefix6 = aux::read_uint64(prefix_it);
+					std::uint64_t const prefix6 = detail::read_uint64(prefix_it);
 
 					if (m_peer6_prefixes.insert(prefix6).second)
 						goto add_result;
@@ -201,7 +197,7 @@ void traversal_algorithm::add_entry(node_id const& id
 				{
 					// mask the lower octet
 					std::uint32_t const prefix4
-						= o->target_addr().to_v4().to_uint() & 0xffffff00;
+						= o->target_addr().to_v4().to_ulong() & 0xffffff00;
 
 					if (m_peer4_prefixes.insert(prefix4).second)
 						goto add_result;
@@ -483,7 +479,7 @@ bool traversal_algorithm::add_requests()
 	// if we're doing aggressive lookups, we keep branch-factor
 	// outstanding requests _at the tops_ of the result list. Otherwise
 	// we just keep any branch-factor outstanding requests
-	bool const agg = m_node.settings().get_bool(settings_pack::dht_aggressive_lookups);
+	bool const agg = m_node.settings().aggressive_lookups;
 
 	// Find the first node that hasn't already been queried.
 	// and make sure that the 'm_branch_factor' top nodes
@@ -612,7 +608,7 @@ void look_for_nodes(char const* nodes_key, udp const& protocol, bdecode_node con
 	{
 		char const* nodes = n.string_ptr();
 		char const* end = nodes + n.string_length();
-		int const protocol_size = int(aux::address_size(protocol));
+		int const protocol_size = int(detail::address_size(protocol));
 
 		while (end - nodes >= 20 + protocol_size + 2)
 		{

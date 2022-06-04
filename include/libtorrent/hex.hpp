@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2004, 2009, 2013, 2015-2020, Arvid Norberg
-Copyright (c) 2020, Alden Torres
+Copyright (c) 2003-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -42,7 +41,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 namespace libtorrent {
 
-namespace aux {
+	namespace aux {
 
 	TORRENT_EXTRA_EXPORT int hex_to_int(char in);
 	TORRENT_EXTRA_EXPORT bool is_hex(span<char const> in);
@@ -61,7 +60,7 @@ namespace aux {
 	// by ``out`` is large enough, i.e. has at least len * 2 bytes of space.
 	TORRENT_CONDITIONAL_EXPORT std::string to_hex(span<char const> s);
 	TORRENT_CONDITIONAL_EXPORT void to_hex(span<char const> in, char* out);
-	TORRENT_CONDITIONAL_EXPORT void to_hex(char const* in, int len, char* out);
+	TORRENT_CONDITIONAL_EXPORT void to_hex(char const* in, int const len, char* out);
 
 	// converts the buffer [``in``, ``in`` + len) from hexadecimal to
 	// binary. The binary output is written to the buffer pointed to
@@ -72,11 +71,19 @@ namespace aux {
 
 #undef TORRENT_CONDITIONAL_EXPORT
 
-} // namespace aux
+	}
 
 #if TORRENT_ABI_VERSION == 1
 
-#include "libtorrent/aux_/disable_deprecation_warnings_push.hpp"
+#ifdef _MSC_VER
+#pragma warning(push, 1)
+// warning C4996: X: was declared deprecated
+#pragma warning( disable : 4996 )
+#endif
+#if defined __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 	// deprecated in 1.2
 	TORRENT_DEPRECATED
@@ -89,9 +96,14 @@ namespace aux {
 	inline bool from_hex(char const *in, int len, char* out)
 	{ return aux::from_hex({in, len}, out); }
 
-#include "libtorrent/aux_/disable_warnings_pop.hpp"
+#if defined __GNUC__
+#pragma GCC diagnostic pop
+#endif
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 #endif
-} // namespace libtorrent
+}
 
 #endif // TORRENT_HEX_HPP_INCLUDED

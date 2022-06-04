@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2017, 2019-2020, Arvid Norberg
-Copyright (c) 2017, Alden Torres
-Copyright (c) 2020, Fonic
+Copyright (c) 2017, Arvid Norberg, Alden Torres
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -45,20 +43,19 @@ namespace libtorrent { namespace dht
 
 sample_infohashes::sample_infohashes(node& dht_node
 	, node_id const& target
-	, data_callback dcallback)
+	, data_callback const& dcallback)
 	: traversal_algorithm(dht_node, target)
-	, m_data_callback(std::move(dcallback)) {}
+	, m_data_callback(dcallback) {}
 
 char const* sample_infohashes::name() const { return "sample_infohashes"; }
 
-void sample_infohashes::got_samples(sha1_hash const& nid
-	, time_duration interval
+void sample_infohashes::got_samples(time_duration interval
 	, int num, std::vector<sha1_hash> samples
 	, std::vector<std::pair<sha1_hash, udp::endpoint>> nodes)
 {
 	if (m_data_callback)
 	{
-		m_data_callback(nid, interval, num, std::move(samples), std::move(nodes));
+		m_data_callback(interval, num, std::move(samples), std::move(nodes));
 		m_data_callback = nullptr;
 		done();
 	}
@@ -85,7 +82,7 @@ void sample_infohashes_observer::reply(msg const& m)
 	// look for nodes
 	std::vector<std::pair<sha1_hash, udp::endpoint>> nodes;
 	udp const protocol = algorithm()->get_node().protocol();
-	int const protocol_size = int(aux::address_size(protocol));
+	int const protocol_size = int(detail::address_size(protocol));
 	char const* nodes_key = algorithm()->get_node().protocol_nodes_key();
 	bdecode_node const n = r.dict_find_string(nodes_key);
 	if (n)
@@ -98,17 +95,6 @@ void sample_infohashes_observer::reply(msg const& m)
 			node_endpoint nep = read_node_endpoint(protocol, ptr);
 			nodes.emplace_back(nep.id, nep.ep);
 		}
-	}
-
-	bdecode_node const id = r.dict_find_string("id");
-	if (!id || id.string_length() != 20)
-	{
-#ifndef TORRENT_DISABLE_LOGGING
-		get_observer()->log(dht_logger::traversal, "[%u] wrong or missing id value"
-			, algorithm()->id());
-#endif
-		timeout();
-		return;
 	}
 
 	std::int64_t const interval = r.dict_find_int_value("interval", -1);
@@ -140,7 +126,7 @@ void sample_infohashes_observer::reply(msg const& m)
 		std::memcpy(v.data(), samples.string_ptr(), v.size() * 20);
 
 		static_cast<sample_infohashes*>(algorithm())->got_samples(
-			node_id(id.string_ptr()), seconds(interval), int(num), std::move(v), std::move(nodes));
+			seconds(interval), int(num), std::move(v), std::move(nodes));
 	}
 	else
 	{

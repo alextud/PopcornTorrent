@@ -1,9 +1,6 @@
 /*
 
-Copyright (c) 2007-2012, 2014-2019, Arvid Norberg
-Copyright (c) 2015, Steven Siloti
-Copyright (c) 2016-2018, Alden Torres
-Copyright (c) 2017, Andrei Kurushin
+Copyright (c) 2007-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -47,6 +44,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/torrent_handle.hpp"
 #include "libtorrent/extensions.hpp"
 #include "libtorrent/extensions/smart_ban.hpp"
+#include "libtorrent/disk_io_thread.hpp"
 #include "libtorrent/aux_/session_impl.hpp"
 #include "libtorrent/peer_connection.hpp"
 #include "libtorrent/peer_info.hpp"
@@ -62,7 +60,7 @@ using namespace std::placeholders;
 
 namespace libtorrent {
 
-struct torrent;
+class torrent;
 
 namespace {
 
@@ -98,7 +96,7 @@ namespace {
 				{
 					m_torrent.session().disk_thread().async_read(m_torrent.storage()
 						, r, std::bind(&smart_ban_plugin::on_read_ok_block
-						, shared_from_this(), *i, i->second.peer->address(), _1, r.length, _2));
+						, shared_from_this(), *i, i->second.peer->address(), _1, r.length, _2, _3));
 					i = m_block_hashes.erase(i);
 				}
 				else
@@ -137,8 +135,8 @@ namespace {
 			// a bunch of read operations on it
 			if (m_torrent.is_aborted()) return;
 
-			std::vector<torrent_peer*> const downloaders
-				= m_torrent.picker().get_downloaders(p);
+			std::vector<torrent_peer*> downloaders;
+			m_torrent.picker().get_downloaders(downloaders, p);
 
 			int size = m_torrent.torrent_file().piece_size(p);
 			peer_request r = {p, 0, std::min(16*1024, size)};
@@ -153,7 +151,7 @@ namespace {
 					// block read will have been deleted by the time it gets back to the network thread
 					m_torrent.session().disk_thread().async_read(m_torrent.storage(), r
 						, std::bind(&smart_ban_plugin::on_read_failed_block
-						, shared_from_this(), pb, i->address(), _1, r.length, _2)
+						, shared_from_this(), pb, i->address(), _1, r.length, _2, _3)
 						, disk_interface::force_copy);
 				}
 
@@ -176,7 +174,7 @@ namespace {
 		};
 
 		void on_read_failed_block(piece_block const b, address const a
-			, disk_buffer_holder buffer, int const block_size
+			, disk_buffer_holder buffer, int const block_size, disk_job_flags_t
 			, storage_error const& error)
 		{
 			TORRENT_ASSERT(m_torrent.session().is_single_thread());
@@ -185,7 +183,7 @@ namespace {
 			if (error) return;
 
 			hasher h;
-			h.update({buffer.data(), block_size});
+			h.update({buffer.get(), block_size});
 
 			auto const range = m_torrent.find_peers(a);
 
@@ -257,7 +255,7 @@ namespace {
 
 		void on_read_ok_block(std::pair<piece_block, block_entry> const b
 			, address const& a, disk_buffer_holder buffer, int const block_size
-			, storage_error const& error)
+			, disk_job_flags_t, storage_error const& error)
 		{
 			TORRENT_ASSERT(m_torrent.session().is_single_thread());
 
@@ -265,7 +263,7 @@ namespace {
 			if (error) return;
 
 			hasher h;
-			h.update({buffer.data(), block_size});
+			h.update({buffer.get(), block_size});
 			sha1_hash const ok_digest = h.final();
 
 			if (b.second.digest == ok_digest) return;
@@ -319,7 +317,7 @@ namespace {
 
 namespace libtorrent {
 
-	std::shared_ptr<torrent_plugin> create_smart_ban_plugin(torrent_handle const& th, client_data_t)
+	std::shared_ptr<torrent_plugin> create_smart_ban_plugin(torrent_handle const& th, void*)
 	{
 		torrent* t = th.native_handle().get();
 		return std::make_shared<smart_ban_plugin>(*t);

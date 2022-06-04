@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2010, 2013-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2016, Alden Torres
+Copyright (c) 2006-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -39,8 +38,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/address.hpp"
 #include "libtorrent/assert.hpp"
 
-namespace libtorrent {
-namespace dht {
+namespace libtorrent { namespace dht {
 
 	struct dht_logger;
 
@@ -57,12 +55,14 @@ namespace dht {
 
 		void set_rate_limit(int l)
 		{
-			m_message_rate_limit = std::max(1, l);
+			TORRENT_ASSERT(l > 0);
+			m_message_rate_limit = l;
 		}
 
 		void set_block_timer(int t)
 		{
-			m_block_timeout = std::max(1, t);
+			TORRENT_ASSERT(t > 0);
+			m_block_timeout = t;
 		}
 
 	private:
@@ -88,7 +88,6 @@ namespace dht {
 
 		node_ban_entry m_ban_nodes[num_ban_nodes];
 	};
-}
-}
+}}
 
 #endif

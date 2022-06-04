@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2017, Steven Siloti
-Copyright (c) 2017-2020, Arvid Norberg
+Copyright (c) 2003-2016, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -45,12 +44,16 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/aux_/disable_warnings_push.hpp"
 
+#include <boost/noncopyable.hpp>
+
 #ifdef TORRENT_WINDOWS
 // windows part
 #include "libtorrent/aux_/windows.hpp"
 #include <winioctl.h>
 #include <sys/types.h>
 #else
+// posix part
+#define _FILE_OFFSET_BITS 64
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -65,6 +68,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <fcntl.h>
 #include <sys/types.h>
 #include <dirent.h> // for DIR
+
+#undef _FILE_OFFSET_BITS
 
 #endif
 
@@ -115,8 +120,12 @@ namespace libtorrent {
 		, error_code& ec);
 	TORRENT_EXTRA_EXPORT void remove(std::string const& f, error_code& ec);
 	TORRENT_EXTRA_EXPORT bool exists(std::string const& f, error_code& ec);
+	TORRENT_EXTRA_EXPORT bool exists(std::string const& f);
+	TORRENT_EXTRA_EXPORT std::int64_t file_size(std::string const& f);
 	TORRENT_EXTRA_EXPORT bool is_directory(std::string const& f
 		, error_code& ec);
+	TORRENT_EXTRA_EXPORT void recursive_copy(std::string const& old_path
+		, std::string const& new_path, error_code& ec);
 	TORRENT_EXTRA_EXPORT void copy_file(std::string const& f
 		, std::string const& newf, error_code& ec);
 	TORRENT_EXTRA_EXPORT void move_file(std::string const& f
@@ -135,11 +144,7 @@ namespace libtorrent {
 	TORRENT_EXTRA_EXPORT std::string extension(std::string const& f);
 	TORRENT_EXTRA_EXPORT std::string remove_extension(std::string const& f);
 	TORRENT_EXTRA_EXPORT bool is_root_path(std::string const& f);
-	TORRENT_EXTRA_EXPORT bool path_equal(std::string const& lhs, std::string const& rhs);
-
-	// compare each path element individually
-	TORRENT_EXTRA_EXPORT int path_compare(string_view lhs, string_view lfile
-		, string_view rhs, string_view rfile);
+	TORRENT_EXTRA_EXPORT bool compare_path(std::string const& lhs, std::string const& rhs);
 
 	// internal used by create_torrent.hpp
 	TORRENT_EXTRA_EXPORT std::string parent_path(std::string const& f);

@@ -399,40 +399,44 @@ using namespace libtorrent;
                 break;
             }
 
-            if (ptr != nullptr && _session != nullptr) {
-                _session->pop_alerts(&deque);
-                for (alert* alert : deque) {
-                    switch (alert->type()) {
-                        case metadata_received_alert::alert_type:
-                            [self metadataReceivedAlert:((metadata_received_alert *)alert)->handle];
-                            break;
-                            
-                        case piece_finished_alert::alert_type:
-                            [self pieceFinishedAlert:((piece_finished_alert *)alert)->handle forPieceIndex:((piece_finished_alert *)alert)->piece_index];
-                            break;
-                            // In case the video file is already fully downloaded
-                        case torrent_finished_alert::alert_type:
-                            [self torrentFinishedAlert:((torrent_finished_alert *)alert)->handle];
-                            break;
-                        case save_resume_data_alert::alert_type: {
-                            torrent_status st = (((save_resume_data_alert *)alert)->handle).status(torrent_handle::query_save_path
-                                                                                                         | torrent_handle::query_name);
-                            [self resumeDataReadyAlertWithData:((save_resume_data_alert *)alert)->params andSaveDirectory:[NSString stringWithUTF8String:(st.save_path + "/resumeData.fastresume").c_str()]];
-                            break;
+            try {
+                if (ptr != nullptr && _session != nullptr) {
+                    _session->pop_alerts(&deque);
+                    for (alert* alert : deque) {
+                        switch (alert->type()) {
+                            case metadata_received_alert::alert_type:
+                                [self metadataReceivedAlert:((metadata_received_alert *)alert)->handle];
+                                break;
+                                
+                            case piece_finished_alert::alert_type:
+                                [self pieceFinishedAlert:((piece_finished_alert *)alert)->handle forPieceIndex:((piece_finished_alert *)alert)->piece_index];
+                                break;
+                                // In case the video file is already fully downloaded
+                            case torrent_finished_alert::alert_type:
+                                [self torrentFinishedAlert:((torrent_finished_alert *)alert)->handle];
+                                break;
+                            case save_resume_data_alert::alert_type: {
+                                torrent_status st = (((save_resume_data_alert *)alert)->handle).status(torrent_handle::query_save_path
+                                                                                                             | torrent_handle::query_name);
+                                [self resumeDataReadyAlertWithData:((save_resume_data_alert *)alert)->params andSaveDirectory:[NSString stringWithUTF8String:(st.save_path + "/resumeData.fastresume").c_str()]];
+                                break;
+                            }
+                            case file_error_alert::alert_type: {
+                                NSString *description = [NSString stringWithFormat:@"%s", alert->message().c_str()];
+                                NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-4 userInfo:@{NSLocalizedDescriptionKey: description}];
+                                if (_failureBlock) _failureBlock(error);
+                                [self cancelStreamingAndDeleteData:NO];
+                                break;
+                            }
+                            default:
+                                break;
                         }
-                        case file_error_alert::alert_type: {
-                            NSString *description = [NSString stringWithFormat:@"%s", alert->message().c_str()];
-                            NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-4 userInfo:@{NSLocalizedDescriptionKey: description}];
-                            if (_failureBlock) _failureBlock(error);
-                            [self cancelStreamingAndDeleteData:NO];
-                            break;
-                        }
-                        default:
-                            break;
                     }
+                    deque.clear();
+                    deque.shrink_to_fit();
                 }
-                deque.clear();
-                deque.shrink_to_fit();
+            } catch (const std::exception& e) {
+                NSLog(@"%s", e.what());
             }
         }
     }

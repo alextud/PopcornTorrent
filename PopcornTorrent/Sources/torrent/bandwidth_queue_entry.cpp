@@ -1,8 +1,6 @@
 /*
 
-Copyright (c) 2009, Georg Rudoy
-Copyright (c) 2009, 2012, 2016-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2018, 2020, Alden Torres
+Copyright (c) 2009-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -33,12 +31,12 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <cstdint>
+#include <cstring>
 #include <algorithm>
 
-#include "libtorrent/aux_/bandwidth_queue_entry.hpp"
+#include "libtorrent/bandwidth_queue_entry.hpp"
 
 namespace libtorrent {
-namespace aux {
 
 	bw_request::bw_request(std::shared_ptr<bandwidth_socket> pe
 		, int blk, int prio)
@@ -77,5 +75,4 @@ namespace aux {
 		, "should be nothrow move constructible");
 	static_assert(std::is_nothrow_move_assignable<bw_request>::value
 		, "should be nothrow move assignable");
-}
 }

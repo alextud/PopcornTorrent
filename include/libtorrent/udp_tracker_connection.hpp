@@ -1,7 +1,6 @@
 /*
 
-Copyright (c) 2004-2008, 2010, 2012, 2014-2017, 2019-2020, Arvid Norberg
-Copyright (c) 2016, Alden Torres
+Copyright (c) 2003-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -55,7 +54,7 @@ namespace libtorrent {
 	public:
 
 		udp_tracker_connection(
-			io_context& ios
+			io_service& ios
 			, tracker_manager& man
 			, tracker_request const& req
 			, std::weak_ptr<request_callback> c);
@@ -95,7 +94,6 @@ namespace libtorrent {
 
 		// wraps tracker_connection::fail
 		void fail(error_code const& ec
-			, operation_t op
 			, char const* msg = ""
 			, seconds32 interval = seconds32(0)
 			, seconds32 min_interval = seconds32(30));

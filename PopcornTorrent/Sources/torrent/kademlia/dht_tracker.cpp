@@ -1,12 +1,6 @@
 /*
 
-Copyright (c) 2006-2012, 2014-2020, Arvid Norberg
-Copyright (c) 2014-2015, 2017, Steven Siloti
-Copyright (c) 2015-2018, Alden Torres
-Copyright (c) 2015, Thomas Yuan
-Copyright (c) 2016, 2019, Andrei Kurushin
-Copyright (c) 2017, Pavel Pimenov
-Copyright (c) 2020, Fonic
+Copyright (c) 2006-2018, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -50,7 +44,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <libtorrent/performance_counters.hpp> // for counters
 #include <libtorrent/aux_/time.hpp>
 #include <libtorrent/session_status.hpp>
-#include <libtorrent/aux_/ip_helpers.hpp> // for is_v6
+#include <libtorrent/broadcast_socket.hpp> // for is_local
 
 #ifndef TORRENT_DISABLE_LOGGING
 #include <libtorrent/hex.hpp> // to_hex
@@ -89,28 +83,27 @@ namespace libtorrent { namespace dht {
 	// class that puts the networking and the kademlia node in a single
 	// unit and connecting them together.
 	dht_tracker::dht_tracker(dht_observer* observer
-		, io_context& ios
-		, send_fun_t send_fun
-		, aux::session_settings const& settings
+		, io_service& ios
+		, send_fun_t const& send_fun
+		, dht::settings const& settings
 		, counters& cnt
 		, dht_storage_interface& storage
 		, dht_state&& state)
 		: m_counters(cnt)
 		, m_storage(storage)
 		, m_state(std::move(state))
-		, m_send_fun(std::move(send_fun))
+		, m_send_fun(send_fun)
 		, m_log(observer)
 		, m_key_refresh_timer(ios)
 		, m_refresh_timer(ios)
 		, m_settings(settings)
 		, m_running(false)
 		, m_host_resolver(ios)
-		, m_send_quota(settings.get_int(settings_pack::dht_upload_rate_limit))
+		, m_send_quota(settings.upload_rate_limit)
 		, m_last_tick(aux::time_now())
-		, m_ioc(ios)
 	{
-		m_blocker.set_block_timer(m_settings.get_int(settings_pack::dht_block_timeout));
-		m_blocker.set_rate_limit(m_settings.get_int(settings_pack::dht_block_ratelimit));
+		m_blocker.set_block_timer(m_settings.block_timeout);
+		m_blocker.set_rate_limit(m_settings.block_ratelimit);
 	}
 
 	void dht_tracker::update_node_id(aux::listen_socket_handle const& s)
@@ -130,7 +123,7 @@ namespace libtorrent { namespace dht {
 		// must use piecewise construction because tracker_node::connection_timer
 		// is neither copyable nor movable
 		auto n = m_nodes.emplace(std::piecewise_construct_t(), std::forward_as_tuple(s)
-			, std::forward_as_tuple(m_ioc
+			, std::forward_as_tuple(get_io_service(m_key_refresh_timer)
 			, s, this, m_settings, nid, m_log, m_counters
 			, std::bind(&dht_tracker::get_node, this, _1, _2)
 			, m_storage));
@@ -149,7 +142,8 @@ namespace libtorrent { namespace dht {
 		if (m_running && n.second)
 		{
 			ADD_OUTSTANDING_ASYNC("dht_tracker::connection_timeout");
-			n.first->second.connection_timer.expires_after(seconds(1));
+			error_code ec;
+			n.first->second.connection_timer.expires_from_now(seconds(1), ec);
 			n.first->second.connection_timer.async_wait(
 				std::bind(&dht_tracker::connection_timeout, self(), n.first->first, _1));
 			n.first->second.dht.bootstrap({}, find_data::nodes_callback());
@@ -174,24 +168,25 @@ namespace libtorrent { namespace dht {
 	void dht_tracker::start(find_data::nodes_callback const& f)
 	{
 		m_running = true;
+		error_code ec;
 
 		ADD_OUTSTANDING_ASYNC("dht_tracker::refresh_key");
-		refresh_key({});
+		refresh_key(ec);
 
 		for (auto& n : m_nodes)
 		{
 			ADD_OUTSTANDING_ASYNC("dht_tracker::connection_timeout");
-			n.second.connection_timer.expires_after(seconds(1));
+			n.second.connection_timer.expires_from_now(seconds(1), ec);
 			n.second.connection_timer.async_wait(
 				std::bind(&dht_tracker::connection_timeout, self(), n.first, _1));
-			if (aux::is_v6(n.first.get_local_endpoint()))
+			if (is_v6(n.first.get_local_endpoint()))
 				n.second.dht.bootstrap(concat(m_state.nodes6, m_state.nodes), f);
 			else
 				n.second.dht.bootstrap(concat(m_state.nodes, m_state.nodes6), f);
 		}
 
 		ADD_OUTSTANDING_ASYNC("dht_tracker::refresh_timeout");
-		m_refresh_timer.expires_after(seconds(5));
+		m_refresh_timer.expires_from_now(seconds(5), ec);
 		m_refresh_timer.async_wait(std::bind(&dht_tracker::refresh_timeout, self(), _1));
 
 		m_state.clear();
@@ -200,10 +195,11 @@ namespace libtorrent { namespace dht {
 	void dht_tracker::stop()
 	{
 		m_running = false;
-		m_key_refresh_timer.cancel();
+		error_code ec;
+		m_key_refresh_timer.cancel(ec);
 		for (auto& n : m_nodes)
-			n.second.connection_timer.cancel();
-		m_refresh_timer.cancel();
+			n.second.connection_timer.cancel(ec);
+		m_refresh_timer.cancel(ec);
 		m_host_resolver.cancel();
 	}
 
@@ -223,12 +219,11 @@ namespace libtorrent { namespace dht {
 	}
 #endif
 
-	std::vector<lt::dht::dht_status> dht_tracker::dht_status() const
+	void dht_tracker::dht_status(std::vector<dht_routing_bucket>& table
+		, std::vector<dht_lookup>& requests)
 	{
-		std::vector<lt::dht::dht_status> ret;
 		for (auto& n : m_nodes)
-			ret.emplace_back(n.second.dht.status());
-		return ret;
+			n.second.dht.status(table, requests);
 	}
 
 	void dht_tracker::update_stats_counters(counters& c) const
@@ -259,8 +254,9 @@ namespace libtorrent { namespace dht {
 
 		tracker_node& n = it->second;
 		time_duration const d = n.dht.connection_timeout();
+		error_code ec;
 		deadline_timer& timer = n.connection_timer;
-		timer.expires_after(d);
+		timer.expires_from_now(d, ec);
 		ADD_OUTSTANDING_ASYNC("dht_tracker::connection_timeout");
 		timer.async_wait(std::bind(&dht_tracker::connection_timeout, self(), s, _1));
 	}
@@ -274,10 +270,11 @@ namespace libtorrent { namespace dht {
 			n.second.dht.tick();
 
 		// periodically update the DOS blocker's settings from the dht_settings
-		m_blocker.set_block_timer(m_settings.get_int(settings_pack::dht_block_timeout));
-		m_blocker.set_rate_limit(m_settings.get_int(settings_pack::dht_block_ratelimit));
+		m_blocker.set_block_timer(m_settings.block_timeout);
+		m_blocker.set_rate_limit(m_settings.block_ratelimit);
 
-		m_refresh_timer.expires_after(seconds(5));
+		error_code ec;
+		m_refresh_timer.expires_from_now(seconds(5), ec);
 		ADD_OUTSTANDING_ASYNC("dht_tracker::refresh_timeout");
 		m_refresh_timer.async_wait(
 			std::bind(&dht_tracker::refresh_timeout, self(), _1));
@@ -289,7 +286,8 @@ namespace libtorrent { namespace dht {
 		if (e || !m_running) return;
 
 		ADD_OUTSTANDING_ASYNC("dht_tracker::refresh_key");
-		m_key_refresh_timer.expires_after(key_refresh);
+		error_code ec;
+		m_key_refresh_timer.expires_from_now(key_refresh, ec);
 		m_key_refresh_timer.async_wait(std::bind(&dht_tracker::refresh_key, self(), _1));
 
 		for (auto& n : m_nodes)
@@ -338,8 +336,7 @@ namespace libtorrent { namespace dht {
 	}
 
 	void dht_tracker::sample_infohashes(udp::endpoint const& ep, sha1_hash const& target
-		, std::function<void(node_id
-			, time_duration
+		, std::function<void(time_duration
 			, int, std::vector<sha1_hash>
 			, std::vector<std::pair<sha1_hash, udp::endpoint>>)> f)
 	{
@@ -516,10 +513,10 @@ namespace libtorrent { namespace dht {
 		m_counters.inc_stats_counter(counters::dht_bytes_in, buf_size);
 		// account for IP and UDP overhead
 		m_counters.inc_stats_counter(counters::recv_ip_overhead_bytes
-			, aux::is_v6(ep) ? 48 : 28);
+			, is_v6(ep) ? 48 : 28);
 		m_counters.inc_stats_counter(counters::dht_messages_in);
 
-		if (m_settings.get_bool(settings_pack::dht_ignore_dark_internet) && aux::is_v4(ep))
+		if (m_settings.ignore_dark_internet && is_v4(ep))
 		{
 			address_v4::bytes_type b = ep.address().to_v4().to_bytes();
 
@@ -575,9 +572,9 @@ namespace libtorrent { namespace dht {
 		return true;
 	}
 
-	dht_tracker::tracker_node::tracker_node(io_context& ios
+	dht_tracker::tracker_node::tracker_node(io_service& ios
 		, aux::listen_socket_handle const& s, socket_manager* sock
-		, aux::session_settings const& settings
+		, dht::settings const& settings
 		, node_id const& nid
 		, dht_observer* observer, counters& cnt
 		, get_foreign_node_t get_foreign_node
@@ -648,7 +645,7 @@ namespace {
 		time_duration const delta = now - m_last_tick;
 		m_last_tick = now;
 
-		std::int64_t const limit = m_settings.get_int(settings_pack::dht_upload_rate_limit);
+		std::int64_t const limit = m_settings.upload_rate_limit;
 
 		// allow 3 seconds worth of burst
 		std::int64_t const max_accrue = std::min(3 * limit, std::int64_t(std::numeric_limits<int>::max()));
@@ -680,11 +677,12 @@ namespace {
 	{
 		TORRENT_ASSERT(m_nodes.find(s) != m_nodes.end());
 
-		static_assert(lt::version_minor < 16, "version number not supported by DHT");
-		static_assert(lt::version_tiny < 16, "version number not supported by DHT");
-		static char const ver[] = {'L', 'T'
-			, lt::version_major, (lt::version_minor << 4) | lt::version_tiny};
-		e["v"] = std::string(ver, ver+ 4);
+		static_assert(LIBTORRENT_VERSION_MINOR < 16, "version number not supported by DHT");
+//		static_assert(LIBTORRENT_VERSION_TINY < 16, "version number not supported by DHT");
+		auto const tiny = std::min(15, LIBTORRENT_VERSION_TINY);
+		static char const version_str[] = {'L', 'T'
+			, LIBTORRENT_VERSION_MAJOR, char((LIBTORRENT_VERSION_MINOR << 4) | tiny)};
+		e["v"] = std::string(version_str, version_str + 4);
 
 		m_send_buf.clear();
 		bencode(std::back_inserter(m_send_buf), e);
@@ -726,7 +724,7 @@ namespace {
 		m_counters.inc_stats_counter(counters::dht_bytes_out, int(m_send_buf.size()));
 		// account for IP and UDP overhead
 		m_counters.inc_stats_counter(counters::sent_ip_overhead_bytes
-			, aux::is_v6(addr) ? 48 : 28);
+			, is_v6(addr) ? 48 : 28);
 		m_counters.inc_stats_counter(counters::dht_messages_out);
 #ifndef TORRENT_DISABLE_LOGGING
 		m_log->log_packet(dht_logger::outgoing_message, m_send_buf, addr);

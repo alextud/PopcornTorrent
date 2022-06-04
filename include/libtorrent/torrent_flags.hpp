@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2017-2020, Arvid Norberg
+Copyright (c) 2017, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -222,7 +222,7 @@ namespace torrent_flags {
 	// indicates that this torrent should never be unloaded from RAM, even
 	// if unloading torrents are allowed in general. Setting this makes
 	// the torrent exempt from loading/unloading management.
-	TORRENT_DEPRECATED constexpr torrent_flags_t pinned = 14_bit;
+	constexpr torrent_flags_t TORRENT_DEPRECATED_MEMBER pinned = 14_bit;
 
 	// If ``override_resume_data`` is set, flags set for this torrent
 	// in this ``add_torrent_params`` object will take precedence over
@@ -235,7 +235,7 @@ namespace torrent_flags {
 	// configuration from the resume file, with the one exception of save
 	// resume data, which has its own flag (for historic reasons).
 	// "file_priorities" and "save_path" are not affected by this flag.
-	TORRENT_DEPRECATED constexpr torrent_flags_t override_resume_data = 15_bit;
+	constexpr torrent_flags_t TORRENT_DEPRECATED_MEMBER override_resume_data = 15_bit;
 
 	// defaults to on and specifies whether tracker URLs loaded from
 	// resume data should be added to the trackers in the torrent or
@@ -244,12 +244,12 @@ namespace torrent_flags {
 	// replaced by any trackers in the resume data. The default behavior is
 	// to have the resume data override the .torrent file _and_ the
 	// trackers added in add_torrent_params.
-	TORRENT_DEPRECATED constexpr torrent_flags_t merge_resume_trackers = 16_bit;
+	constexpr torrent_flags_t TORRENT_DEPRECATED_MEMBER merge_resume_trackers = 16_bit;
 
 	// if this flag is set, the save path from the resume data file, if
 	// present, is honored. This defaults to not being set, in which
 	// case the save_path specified in add_torrent_params is always used.
-	TORRENT_DEPRECATED constexpr torrent_flags_t use_resume_save_path = 17_bit;
+	constexpr torrent_flags_t TORRENT_DEPRECATED_MEMBER use_resume_save_path = 17_bit;
 
 	// defaults to on and specifies whether web seed URLs loaded from
 	// resume data should be added to the ones in the torrent file or
@@ -259,7 +259,7 @@ namespace torrent_flags {
 	// add_torrent_params are also replaced. The default behavior is to
 	// have any web seeds in the resume data take precedence over whatever
 	// is passed in here as well as the .torrent file.
-	TORRENT_DEPRECATED constexpr torrent_flags_t merge_resume_http_seeds = 18_bit;
+	constexpr torrent_flags_t TORRENT_DEPRECATED_MEMBER merge_resume_http_seeds = 18_bit;
 #endif
 
 	// set this flag to disable DHT for this torrent. This lets you have the DHT
