@@ -82,6 +82,7 @@ using namespace libtorrent;
 - (void)setupSession {
     firstPiece = libtorrent::piece_index_t(-1);
     endPiece = libtorrent::piece_index_t(0);
+    lastFilePiece = libtorrent::piece_index_t(0);
     
     _session = new session();
     settings_pack pack = default_settings();
@@ -296,9 +297,9 @@ using namespace libtorrent;
         
         NSLog(@"new startPiece: %d", (int)startPiece);
         
-        //check if we are over the total pieces of the torrent
-        if (request.piece >= ti->last_piece()) {
-            finalPiece = ti->last_piece();
+        //check if we are over the total pieces of the selected file
+        if (request.piece >= lastFilePiece) {
+            finalPiece = lastFilePiece;
         }
         
         //set global variables
@@ -463,7 +464,7 @@ using namespace libtorrent;
     th.prioritize_pieces(piece_priorities);
     
     for (int i = 0; i < MIN_PIECES; i++) {
-        if (next_required_piece < ti->last_piece()) {
+        if (next_required_piece < lastFilePiece) {
             th.piece_priority(next_required_piece, top_priority);
             th.set_piece_deadline(next_required_piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
             required_pieces.push_back(next_required_piece);
@@ -527,7 +528,22 @@ using namespace libtorrent;
         }
     }];
     
-    [self.mediaServer startWithPort:50321 bonjourName:nil];
+    NSMutableDictionary* options = [NSMutableDictionary dictionary];
+    NSInteger port = 50321;
+    [options setObject:[NSNumber numberWithInteger:port] forKey:GCDWebServerOption_Port];
+    NSError *error;
+
+    while (![self.mediaServer startWithOptions:options error:&error]) {
+        port++;
+        [options setObject:[NSNumber numberWithInteger:port] forKey:GCDWebServerOption_Port];
+
+        /// failed to start webserver
+        if (port > 50341) {
+            if (_failureBlock) _failureBlock(error);
+            [self cancelStreamingAndDeleteData:NO];
+            return;
+        }
+    }
     
     __block NSURL *serverURL = self.mediaServer.serverURL;
     
@@ -603,6 +619,7 @@ using namespace libtorrent;
     
     // download last pieces
     piece_index_t last_piece = ti->map_file(file_index, file_size - 1, 0).piece;
+    lastFilePiece = last_piece;
     for (int i = 0; i < 10; i++) {
         required_pieces.push_back(last_piece);
         last_piece--;
