@@ -9,15 +9,6 @@
           "revision": "935e2736044e71e5341663c3cc9a335ba6867a2b",
           "version": null
         }
-      },
-      {
-        "package": "openssl",
-        "repositoryURL": "https://github.com/nferruzzi/openssl",
-        "state": {
-          "branch": "main",
-          "revision": "03f3c905a34f1814a30292f945a15777aee421ea",
-          "version": null
-        }
       }
     ]
   },
