@@ -26,6 +26,9 @@ let package = Package(
                 .define("BOOST_ASIO_HASH_MAP_BUCKETS", to: "1021"),
                 .define("TORRENT_ABI_VERSION", to: "3"),
                 .headerSearchPath("../../include/"),
+            ],
+            linkerSettings: [
+                .linkedFramework("SystemConfiguration")
             ]
         ),
         .testTarget(name: "PopcornTorrent-Tests",
@@ -33,8 +36,7 @@ let package = Package(
                     path: "PopcornTorrentTests",
                     resources: [.process("Test.torrent")],
                     linkerSettings: [
-                        .linkedFramework("MediaPlayer"),
-                        .linkedFramework("SystemConfiguration")
+                        .linkedFramework("MediaPlayer")
                     ]
                    )
     ],
