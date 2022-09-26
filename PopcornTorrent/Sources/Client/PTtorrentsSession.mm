@@ -37,6 +37,10 @@ using namespace libtorrent;
     libtorrent::session *_session;
 }
 
++ (void)load {
+    [PTTorrentsSession sharedSession];
+}
+
 + (instancetype)sharedSession {
     static dispatch_once_t onceToken;
     static PTTorrentsSession *sharedSession;
@@ -165,7 +169,7 @@ using namespace libtorrent;
     th.set_max_connections(60);
     th.set_max_uploads(10);
     
-    NSString *hashId = [NSString stringWithCString:aux::to_hex(th.info_hash()).c_str() encoding:NSUTF8StringEncoding];
+    NSString *hashId = [self hashIDForTorrentHandle:th];
     self.streamers[hashId] = torrentStreamer;
     
 #if TARGET_OS_IOS
@@ -195,7 +199,7 @@ using namespace libtorrent;
     }
     
     auto torrent = torrentStreamer.torrentHandle;
-    NSString *hashId = [NSString stringWithCString:aux::to_hex(torrent.info_hash()).c_str() encoding:NSUTF8StringEncoding];
+    NSString *hashId = [self hashIDForTorrentHandle:torrent];
     if (!self.streamers[hashId]) {
         return;
     }
