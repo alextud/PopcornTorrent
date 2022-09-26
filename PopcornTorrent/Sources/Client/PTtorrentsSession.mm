@@ -16,6 +16,11 @@
 #import <libtorrent/write_resume_data.hpp>
 #include "libtorrent/hex.hpp" // to_hex
 
+
+#if TARGET_OS_IOS || TARGET_OS_TV
+#import <UIKit/UIApplication.h>
+#endif
+
 using namespace libtorrent;
 
 #define ALERTS_LOOP_WAIT_MILLIS 500
