@@ -11,7 +11,7 @@
 
 - (PTTorrentStreamer *)streamer{
     if (_streamer == nil){
-        _streamer = [PTTorrentStreamer sharedStreamer];
+        _streamer = [[PTTorrentStreamer alloc] init];
     }
     return _streamer;
 }
@@ -24,7 +24,7 @@
     } readyToPlay:^(NSURL *videoFileURL, NSURL* video) {
         NSLog(@"%@", videoFileURL);
         XCTAssertNotNil(videoFileURL, @"No file URL");
-        [[PTTorrentStreamer sharedStreamer] cancelStreamingAndDeleteData:YES];
+        [self.streamer cancelStreamingAndDeleteData:YES];
         [expectation fulfill];
     } failure:^(NSError *error) {
         XCTFail(@"%@", error.localizedDescription);
@@ -50,7 +50,7 @@
         NSLog(@"%@", videoFileURL);
         XCTAssertNotNil(videoFileURL, @"No file URL");
         XCTAssertEqualObjects(video.lastPathComponent, selectedTorrent);
-        [[PTTorrentStreamer sharedStreamer] cancelStreamingAndDeleteData:YES];
+        [self.streamer cancelStreamingAndDeleteData:YES];
         [expectation fulfill];
     } failure:^(NSError *error) {
         XCTFail(@"%@", error.localizedDescription);
@@ -72,11 +72,12 @@
 -(void)testTorrentFileStreaming {
     XCTestExpectation *expectation = [self expectationWithDescription:@"Torrent Streaming"];
     
-    [self.streamer startStreamingFromMultiTorrentFileOrMagnetLink:[[NSBundle bundleForClass:[self class]] pathForResource:@"Test" ofType:@"torrent"] progress:^(PTTorrentStatus status) {
+    NSString *filePath = [[[NSBundle bundleForClass:[self class]] bundlePath] stringByAppendingString:@"/Contents/Resources/PopcornTorrent_PopcornTorrent-Tests.bundle/Contents/Resources/Test.torrent"];
+    [self.streamer startStreamingFromMultiTorrentFileOrMagnetLink:filePath progress:^(PTTorrentStatus status) {
         
     } readyToPlay:^(NSURL *videoFileURL, NSURL* video) {
         NSLog(@"%@", videoFileURL);
-        [[PTTorrentStreamer sharedStreamer] cancelStreamingAndDeleteData:YES];
+        [self.streamer cancelStreamingAndDeleteData:YES];
         XCTAssertNotNil(videoFileURL, @"No file URL");
         [expectation fulfill];
         
@@ -99,7 +100,7 @@
         
     } readyToPlay:^(NSURL *videoFileURL, NSURL* video) {
         NSLog(@"%@", videoFileURL);
-        [[PTTorrentStreamer sharedStreamer] cancelStreamingAndDeleteData:NO];
+        [self.streamer cancelStreamingAndDeleteData:YES];
         XCTAssertNotNil(videoFileURL, @"No file URL");
         [expectation fulfill];
     } failure:^(NSError *error) {

@@ -193,37 +193,24 @@ using namespace libtorrent;
 - (void)pause {
     if (_downloadStatus != PTTorrentDownloadStatusDownloading) return;
     
-    _session->pause();
+    self.torrentHandle.pause(torrent_handle::graceful_pause);
     [self setDownloadStatus:PTTorrentDownloadStatusPaused];
-    
-    #if TARGET_OS_IOS
-      dispatch_async(dispatch_get_main_queue(), ^{
-        [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
-      });
-    #endif
 }
 
 - (void)resume {
     if (_downloadStatus != PTTorrentDownloadStatusPaused) return;
     
-    if (_session->get_torrents().size() == 0) // Torrent was in the middle of downloading and app was exited. Download has been loaded from disk and is now being resumed. Fetch torrent metadata instead of just resuming.
-    {
+    if (self.torrentHandle.is_valid()) {
+        self.torrentHandle.resume();
+    } else {
+        /// Torrent was in the middle of downloading and app was exited. Download has been loaded from disk and is now being resumed. Fetch torrent metadata instead of just resuming.
         [self startDownloadingFromFileOrMagnetLink:_mediaMetadata[MPMediaItemPropertyPathOrLink] selectFileTDownload:^int(NSArray<NSString *> * _Nonnull torrentsAvailable, NSArray<NSNumber *> * _Nonnull fileSizes) {
             return [_mediaMetadata[MPMediaItemPropertySelectedFileIndex] integerValue];
         }];
         return [self setDownloadStatus:PTTorrentDownloadStatusProcessing];
     }
-    
-    if (_session->is_paused()) {
-       _session->resume();
-    }
+
     [self setDownloadStatus:PTTorrentDownloadStatusDownloading];
-    
-    #if TARGET_OS_IOS
-      dispatch_async(dispatch_get_main_queue(), ^{
-        [UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
-      });
-    #endif
 }
 
 - (BOOL)delete {
@@ -243,44 +230,6 @@ using namespace libtorrent;
     if (_downloadStatus != PTTorrentDownloadStatusFinished) return;
     self.readyToPlayBlock = handler;
     [self startWebServerAndPlay];
-}
-
-- (void)cancelStreamingAndDeleteData:(BOOL)deleteData {
-    
-    std::vector<torrent_handle> ths = _session->get_torrents();
-    for(std::vector<torrent_handle>::size_type i = 0; i != ths.size(); i++) {
-        ths[i].pause();
-        if (!deleteData && ths[i].need_save_resume_data())ths[i].save_resume_data();
-        ths[i].flush_cache();
-        _session->pause();
-        if (deleteData)_session->remove_torrent(ths[i]);
-    }
-    
-    required_pieces.clear();
-    required_pieces.shrink_to_fit();
-    [self.requestedRangeInfo removeAllObjects];
-    
-    self.progressBlock = nil;
-    self.readyToPlayBlock = nil;
-    self.failureBlock = nil;
-    if (self.mediaServer.isRunning) [self.mediaServer stop];
-    [self.mediaServer removeAllHandlers];
-    
-    if (deleteData) {
-        self.alertsQueue = nil;
-        self.alertsLoopActive = NO;
-    }
-    
-    firstPiece = libtorrent::piece_index_t(-1);
-    endPiece = libtorrent::piece_index_t(0);
-    
-    self.streaming = NO;
-    
-    #if TARGET_OS_IOS
-      dispatch_async(dispatch_get_main_queue(), ^{
-        [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
-      });
-    #endif
 }
 
 @end

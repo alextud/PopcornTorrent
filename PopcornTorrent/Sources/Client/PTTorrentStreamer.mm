@@ -10,6 +10,8 @@
 #import "../Resources/NSString+Localization.h"
 #import "PTTorrentStreamer+Protected.h"
 #import <GCDWebServer.h>
+#import "PTTorrentsSession.h"
+
 #if TARGET_OS_IOS || TARGET_OS_TV
 #import <UIKit/UIApplication.h>
 #endif
@@ -25,15 +27,6 @@ using namespace libtorrent;
 
 @implementation PTTorrentStreamer
 
-+ (instancetype)sharedStreamer {
-    static dispatch_once_t onceToken;
-    static PTTorrentStreamer *sharedStreamer;
-    dispatch_once(&onceToken, ^{
-        sharedStreamer = [[PTTorrentStreamer alloc] init];
-    });
-    return sharedStreamer;
-}
-
 - (instancetype)init {
     self = [super init];
     if (self) {
@@ -41,18 +34,6 @@ using namespace libtorrent;
         [self setupSession];
     }
     return self;
-}
-
-- (NSString *)fileName {
-    return _fileName;
-}
-
-- (NSString *)savePath {
-    return _savePath;
-}
-
-- (PTTorrentStatus)torrentStatus {
-    return _torrentStatus;
 }
 
 - (PTSize *)fileSize {
@@ -80,32 +61,10 @@ using namespace libtorrent;
 }
 
 - (void)setupSession {
+    _torrentHandle = libtorrent::torrent_handle();
     firstPiece = libtorrent::piece_index_t(-1);
     endPiece = libtorrent::piece_index_t(0);
     lastFilePiece = libtorrent::piece_index_t(0);
-    
-    _session = new session();
-    settings_pack pack = default_settings();
-
-    pack.set_str(settings_pack::listen_interfaces, "0.0.0.0:6881,[::]:6881");
-    pack.set_int(settings_pack::max_retry_port_bind, 6889 - 6881);
-    
-    pack.set_int(settings_pack::alert_mask,
-                 alert::status_notification |
-                 alert::piece_progress_notification |
-                 alert::storage_notification
-//                 alert::all_categories
-                 );
-
-    pack.set_bool(settings_pack::listen_system_port_fallback, false);
-    pack.set_bool(settings_pack::suggest_read_cache, false);
-    // libtorrent 1.1 enables UPnP & NAT-PMP by default
-    // turn them off before `libt::session` ctor to avoid split second effects
-    pack.set_bool(settings_pack::enable_upnp, false);
-    pack.set_bool(settings_pack::enable_natpmp, false);
-    pack.set_bool(settings_pack::upnp_ignore_nonrouters, true);
-    pack.set_int(settings_pack::file_pool_size, 2);
-    _session->apply_settings(pack);
     
     _requestedRangeInfo = [[NSMutableDictionary alloc] init];
     
@@ -134,12 +93,6 @@ using namespace libtorrent;
                                readyToPlay:(PTTorrentStreamerReadyToPlay)readyToPlay
                                    failure:(PTTorrentStreamerFailure)failure {
     
-    
-    self.alertsQueue = dispatch_queue_create("com.popcorntimetv.popcorntorrent.alerts", DISPATCH_QUEUE_SERIAL_WITH_AUTORELEASE_POOL);
-    self.alertsLoopActive = YES;
-    dispatch_async(self.alertsQueue, ^{
-        [self alertsLoop];
-    });
     
     [self startStreamingFromFileOrMagnetLink:filePathOrMagnetLink
                                directoryName:directoryName
@@ -238,9 +191,10 @@ using namespace libtorrent;
     tp.save_path = std::string([self.savePath UTF8String]);
     tp.storage_mode = storage_mode_allocate;
     
-    error_code ec_1;
-    torrent_handle th = _session->add_torrent(tp, ec_1);
-    if (ec_1) {
+    NSError *error;
+    self.torrentHandle = [[PTTorrentsSession sharedSession] addTorrent:self params:tp error:&error];
+    
+    if (error) {
         if (didTryFastResume) {
             // retry streaming without fast resume, aka start from scratch
             [[NSFileManager defaultManager] removeItemAtPath:self.savePath error:nil];
@@ -251,37 +205,29 @@ using namespace libtorrent;
                                          readyToPlay:readyToPlay
                                              failure:failure];
         } else {
-            NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-1 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithCString:ec_1.message().c_str() encoding:NSUTF8StringEncoding]}];
+            
             if (failure) failure(error);
             [self cancelStreamingAndDeleteData:NO];
         }
         return;
     }
-//    th.set_sequential_download(true);
-    th.set_flags(libtorrent::torrent_flags::sequential_download);
-    th.set_max_connections(60);
-    th.set_max_uploads(10);
     
     if (![filePathOrMagnetLink hasPrefix:@"magnet"]) {
-        [self metadataReceivedAlert:th];
+        [self metadataReceivedAlert:_torrentHandle];
     }
-    
-    if(_session->is_paused())_session->resume();
-    
-#if TARGET_OS_IOS
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
-  });
-#endif
 }
 
+- (void)handleTorrentError:(NSError *)error {
+    if (self.failureBlock) self.failureBlock(error);
+    [self cancelStreamingAndDeleteData:NO];
+}
 
 #pragma mark - Fast Forward
 
 
 - (BOOL)fastForwardTorrentForRange:(NSRange)range
 {
-    for(auto torrent: _session->get_torrents()) {
+    auto torrent =  _torrentHandle;
         auto ti = torrent.torrent_file();
         
         //find the torrent piece corresponding to the requested piece of the movie
@@ -322,7 +268,6 @@ using namespace libtorrent;
         
         //start to download the requested part of the movie
         [self prioritizeNextPieces:torrent];
-    }
     
     return NO;
     
@@ -330,17 +275,7 @@ using namespace libtorrent;
 
 
 - (void)cancelStreamingAndDeleteData:(BOOL)deleteData {
-    for(auto torrent: _session->get_torrents()) {
-        torrent.pause();
-        if (!deleteData && torrent.need_save_resume_data()) {
-            torrent.save_resume_data();
-        }
-        torrent.flush_cache();
-        _session->pause();
-        if (deleteData) {
-            _session->remove_torrent(torrent);
-        }
-    }
+    [[PTTorrentsSession sharedSession] removeTorrent:self];
     
     required_pieces.clear();
     required_pieces.shrink_to_fit();
@@ -352,7 +287,7 @@ using namespace libtorrent;
     self.readyToPlayBlock = nil;
     self.failureBlock = nil;
     
-    if (self.mediaServer.isRunning)[self.mediaServer stop];
+    if (self.mediaServer.isRunning) [self.mediaServer stop];
     [self.mediaServer removeAllHandlers];
     
     _fileName = nil;
@@ -365,79 +300,10 @@ using namespace libtorrent;
     _torrentStatus = (PTTorrentStatus){0, 0, 0, 0, 0, 0};
     _isFinished = false;
     
-#if TARGET_OS_IOS
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
-  });
-#endif
-    
     if (deleteData) {
-        self.alertsQueue = nil;
-        self.alertsLoopActive = NO;
         [[NSFileManager defaultManager] removeItemAtPath:self.savePath error:nil];
         _savePath = nil;
-        _session->abort();
-        _session = nil;
         [self setupSession];
-    }
-}
-
-
-#pragma mark - Alerts Loop
-
-
-- (void)alertsLoop {
-    @autoreleasepool {
-        
-        std::vector<alert *> deque;
-        time_duration max_wait = milliseconds(ALERTS_LOOP_WAIT_MILLIS);
-        
-        while ([self isAlertsLoopActive]) {
-            const alert *ptr = _session->wait_for_alert(max_wait);
-            if (![self isAlertsLoopActive]) {
-                break;
-            }
-
-            try {
-                if (ptr != nullptr && _session != nullptr) {
-                    _session->pop_alerts(&deque);
-                    for (alert* alert : deque) {
-                        switch (alert->type()) {
-                            case metadata_received_alert::alert_type:
-                                [self metadataReceivedAlert:((metadata_received_alert *)alert)->handle];
-                                break;
-                                
-                            case piece_finished_alert::alert_type:
-                                [self pieceFinishedAlert:((piece_finished_alert *)alert)->handle forPieceIndex:((piece_finished_alert *)alert)->piece_index];
-                                break;
-                                // In case the video file is already fully downloaded
-                            case torrent_finished_alert::alert_type:
-                                [self torrentFinishedAlert:((torrent_finished_alert *)alert)->handle];
-                                break;
-                            case save_resume_data_alert::alert_type: {
-                                torrent_status st = (((save_resume_data_alert *)alert)->handle).status(torrent_handle::query_save_path
-                                                                                                             | torrent_handle::query_name);
-                                [self resumeDataReadyAlertWithData:((save_resume_data_alert *)alert)->params andSaveDirectory:[NSString stringWithUTF8String:(st.save_path + "/resumeData.fastresume").c_str()]];
-                                break;
-                            }
-                            case file_error_alert::alert_type: {
-                                NSString *description = [NSString stringWithFormat:@"%s", alert->message().c_str()];
-                                NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-4 userInfo:@{NSLocalizedDescriptionKey: description}];
-                                if (_failureBlock) _failureBlock(error);
-                                [self cancelStreamingAndDeleteData:NO];
-                                break;
-                            }
-                            default:
-                                break;
-                        }
-                    }
-                    deque.clear();
-                    deque.shrink_to_fit();
-                }
-            } catch (const std::exception& e) {
-                NSLog(@"%s", e.what());
-            }
-        }
     }
 }
 
@@ -583,7 +449,6 @@ using namespace libtorrent;
 #pragma mark - Alerts
 
 - (void)metadataReceivedAlert:(torrent_handle)th {
-    
     _requiredSpace = th.status().total_wanted;
     NSURL* savePathURL = [NSURL fileURLWithPath:self.savePath];
     NSDictionary *results = [savePathURL resourceValuesForKeys:@[NSURLVolumeAvailableCapacityKey] error:nil];
@@ -603,8 +468,7 @@ using namespace libtorrent;
         PTSize *fileSize = [PTSize sizeWithLongLong: file_size];
         NSString *description = [NSString localizedStringWithFormat:@"There is not enough space to download the torrent. Please clear at least %@ and try again.".localizedString, fileSize.stringValue];
         NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-4 userInfo:@{NSLocalizedDescriptionKey: description}];
-        if (_failureBlock) _failureBlock(error);
-        [self cancelStreamingAndDeleteData:NO];
+        [self handleTorrentError:error];
         return;
     }
     
@@ -645,7 +509,7 @@ using namespace libtorrent;
     auto copyRequired(required_pieces);
     
     for (piece_index_t piece: copyRequired) {
-        if(_session->is_paused())break;
+//        if(_session->is_paused())break;
         if (th.have_piece(piece) == false) {
             allRequiredPiecesDownloaded = NO;
         }else{
@@ -708,27 +572,14 @@ using namespace libtorrent;
         [[NSNotificationCenter defaultCenter] postNotificationName:PTTorrentStatusDidChangeNotification object:self];
     });
     
-#if TARGET_OS_IOS
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
-    });
-#endif
-    
+    [[PTTorrentsSession sharedSession] removeTorrent:self];
     // Remove the torrent when its finished
-    th.pause(torrent_handle::graceful_pause);
-    _session->remove_torrent(th);
+    // th.pause(torrent_handle::graceful_pause);
 }
 
 - (void)resumeDataReadyAlertWithData:(add_torrent_params)resumeData andSaveDirectory:(NSString*)directory {
     auto const buf = write_resume_data_buf(resumeData);
 
-    self.alertsQueue = nil;
-    self.alertsLoopActive = NO;
-
-    for (auto torrent: _session->get_torrents()) {
-        _session->remove_torrent(torrent);
-    }
-    
     std::stringstream ss;
     ss.unsetf(std::ios_base::skipws);
     bencode(std::ostream_iterator<char>(ss), buf);
@@ -736,9 +587,8 @@ using namespace libtorrent;
     NSData *resumeDataFile = [[NSData alloc] initWithBytesNoCopy:(void*)ss.str().c_str() length:ss.str().size() freeWhenDone:false];
     NSAssert(resumeDataFile != nil, @"Resume data failed to be generated");
     [resumeDataFile writeToFile:[NSURL URLWithString:directory].relativePath atomically:NO];
-    _session->abort();
-    _session = nil;
     [self setupSession];
+    [[PTTorrentsSession sharedSession] removeTorrent:self];
 }
 
 @end

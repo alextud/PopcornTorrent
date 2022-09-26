@@ -9,12 +9,14 @@
 
 #import <GCDWebServer.h>
 
+using namespace libtorrent;
+
 /**
  Variables to be used by `PTTorrentStreamer` subclasses only.
  */
 @interface PTTorrentStreamer () {
     @protected
-    libtorrent::session *_session;
+    libtorrent::torrent_handle _torrentHandle;
     PTTorrentStatus _torrentStatus;
     NSString *_fileName;
     long long _requiredSpace;
@@ -29,8 +31,6 @@
     int selectedFileIndex;
 }
 
-@property (nonatomic, strong, nullable) dispatch_queue_t alertsQueue;
-@property (nonatomic, getter=isAlertsLoopActive) BOOL alertsLoopActive;
 @property (nonatomic, getter=isStreaming) BOOL streaming;
 @property (nonatomic, strong, nonnull) NSMutableDictionary *requestedRangeInfo;
 
@@ -40,8 +40,19 @@
 @property (nonatomic, copy, nullable) PTTorrentStreamerSelection selectionBlock;
 @property (nonatomic, strong, nonnull) GCDWebServer *mediaServer;
 @property (nonatomic) libtorrent::torrent_status status;
+@property (nonatomic) libtorrent::torrent_handle torrentHandle;
 @property (nonatomic) bool isFinished;
 
 - (void)startWebServerAndPlay;
+
+@end
+
+@interface PTTorrentStreamer()
+
+- (void)metadataReceivedAlert:(torrent_handle)th;
+- (void)pieceFinishedAlert:(torrent_handle)th forPieceIndex:(piece_index_t)index;
+- (void)torrentFinishedAlert:(torrent_handle)th;
+- (void)resumeDataReadyAlertWithData:(add_torrent_params)resumeData andSaveDirectory:(NSString *_Nonnull)directory;
+- (void)handleTorrentError:(NSError *_Nullable)error;
 
 @end

@@ -48,11 +48,6 @@ FOUNDATION_EXPORT NSNotificationName const PTTorrentStatusDidChangeNotification;
 @interface PTTorrentStreamer : NSObject
     
 /**
-  Shared singleton instance.
-*/
-+ (instancetype)sharedStreamer;
-
-/**
  The directory to which all torrents are saved. Defaults to `NSTemporaryDirectory`. Will return `nil` if there is an error creating the directory.
  */
 + (NSString * _Nullable)downloadDirectory;
