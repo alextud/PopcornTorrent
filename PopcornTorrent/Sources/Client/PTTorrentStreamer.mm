@@ -11,10 +11,6 @@
 #import "PTTorrentStreamer+Protected.h"
 #import <GCDWebServer.h>
 #import "PTTorrentsSession.h"
-
-#if TARGET_OS_IOS || TARGET_OS_TV
-#import <UIKit/UIApplication.h>
-#endif
 #import "PTSize.h"
 
 #define ALERTS_LOOP_WAIT_MILLIS 500
