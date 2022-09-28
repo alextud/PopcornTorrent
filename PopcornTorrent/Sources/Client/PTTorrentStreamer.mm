@@ -233,7 +233,7 @@ using namespace libtorrent;
     //set first and last pieces
     auto startPiece = request.piece;
     auto finalPiece = startPiece; // + libtorrent::piece_index_t(MIN_PIECES - 1);
-    for (int i=0; i < MIN_PIECES; i++) {
+    for (int i = 0; i < MIN_PIECES - 1; i++) {
         finalPiece++;
         
         //check if we are over the total pieces of the selected file
@@ -491,6 +491,23 @@ using namespace libtorrent;
 
     std::string path = ti->files().file_path(file_index);
     _fileName = [NSString stringWithCString:path.c_str() encoding:NSUTF8StringEncoding];
+
+    _torrentStatus = {
+        0,
+        _status.progress,
+        _status.download_rate,
+        _status.upload_rate,
+        _status.num_seeds,
+        _status.num_peers
+    };
+    
+    _totalDownloaded = _status.total_wanted_done;
+    _isFinished = _status.is_finished;
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (_progressBlock) _progressBlock(_torrentStatus);
+        [[NSNotificationCenter defaultCenter] postNotificationName:PTTorrentStatusDidChangeNotification object:self];
+    });
 }
 
 - (void)pieceFinishedAlert:(torrent_handle)th forPieceIndex:(piece_index_t)index {
