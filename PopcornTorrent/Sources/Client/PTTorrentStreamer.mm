@@ -286,9 +286,6 @@ using namespace libtorrent;
     if (self.mediaServer.isRunning) [self.mediaServer stop];
     [self.mediaServer removeAllHandlers];
     
-    _fileName = nil;
-    _requiredSpace = 0;
-    _totalDownloaded = 0;
     firstPiece = libtorrent::piece_index_t(-1);
     endPiece = libtorrent::piece_index_t(0);
     
@@ -299,6 +296,9 @@ using namespace libtorrent;
     if (deleteData) {
         [[NSFileManager defaultManager] removeItemAtPath:self.savePath error:nil];
         _savePath = nil;
+        _fileName = nil;
+        _requiredSpace = 0;
+        _totalDownloaded = 0;
         [self setupSession];
     }
 }
