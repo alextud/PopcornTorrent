@@ -191,14 +191,6 @@ using namespace libtorrent;
     NSString *hashID = [self hashIDForTorrentHandle:th];
     [self.streamers[hashID] torrentFinishedAlert:th];
     [self removeTorrent:self.streamers[hashID]];
-    
-    if (_session->get_torrents().empty()) {
-#if TARGET_OS_IOS
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
-        });
-#endif
-    }
 }
 
 - (void)removeTorrent:(PTTorrentStreamer *)torrentStreamer {
@@ -221,6 +213,14 @@ using namespace libtorrent;
     torrent.flush_cache();
     
     _session->remove_torrent(torrent);
+
+#if TARGET_OS_IOS
+    if (_session->get_torrents().empty()) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
+        });
+    }
+#endif
 }
 
 - (void)resumeDataReadyAlertWithData:(save_resume_data_alert *)alert {
