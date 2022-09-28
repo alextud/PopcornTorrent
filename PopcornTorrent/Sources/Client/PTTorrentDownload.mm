@@ -244,6 +244,8 @@ using namespace libtorrent;
     if (self.isStreaming && _downloadStatus == PTTorrentDownloadStatusDownloading) {
         self.readyToPlayBlock = nil;
         self.streaming = FALSE;
+        if (self.mediaServer.isRunning) [self.mediaServer stop];
+        [self.mediaServer removeAllHandlers];
     } else {
         [super cancelStreamingAndDeleteData:deleteData];
     }
