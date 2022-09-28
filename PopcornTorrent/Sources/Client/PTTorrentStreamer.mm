@@ -243,6 +243,9 @@ using namespace libtorrent;
         }
     }
     
+    //set global variables
+    firstPiece = startPiece;
+    endPiece = finalPiece;
     NSLog(@"new startPiece: %d", (int)startPiece);
     
     //if we already have the requested part of the movie return immediately
@@ -253,10 +256,6 @@ using namespace libtorrent;
             return YES;
         }
     }
-    
-    //set global variables
-    firstPiece = startPiece;
-    endPiece = finalPiece;
     
     //take control of the array from all of the other threads that might be accessing it
     mtx.lock();
