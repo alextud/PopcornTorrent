@@ -3,17 +3,15 @@
 #import "PTTorrentStreamer.h"
 #import <Foundation/Foundation.h>
 #import <string>
-#import <libtorrent/alert.hpp>
-#import <libtorrent/alert_types.hpp>
 #import <libtorrent/bencode.hpp>
 #import "../Security/CocoaSecurity.h"
 #import "../Resources/NSString+Localization.h"
 #import "PTTorrentStreamer+Protected.h"
 #import <GCDWebServer.h>
 #import "PTTorrentsSession.h"
+#import "PTTorrentsSession+Protected.h"
 #import "PTSize.h"
 
-#define ALERTS_LOOP_WAIT_MILLIS 500
 #define PIECE_DEADLINE_MILLIS 100
 
 NSNotificationName const PTTorrentStatusDidChangeNotification = @"com.popcorntimetv.popcorntorrent.status.change";
@@ -224,46 +222,49 @@ using namespace libtorrent;
 - (BOOL)fastForwardTorrentForRange:(NSRange)range
 {
     auto torrent =  _torrentHandle;
-        auto ti = torrent.torrent_file();
+    auto ti = torrent.torrent_file();
         
         //find the torrent piece corresponding to the requested piece of the movie
-        NSInteger index = [self selectedFileIndexInTorrent:torrent];
-        peer_request request = ti->map_file(libtorrent::file_index_t(index), range.location, (int)range.length);
+    auto index = file_index_t([self selectedFileIndexInTorrent:torrent]);
+    int64_t fileSize = ti->files().file_size(index);
+    int64_t forwardRange = range.location + range.length;
+    peer_request request = ti->map_file(index, range.location, uint(range.length));
         
-        //set first and last pieces
-        auto startPiece = request.piece;
-        auto finalPiece = startPiece; // + libtorrent::piece_index_t(MIN_PIECES - 1);
-        for (int i=0; i < MIN_PIECES; i++) {
-            finalPiece++;
-        }
-        
-        NSLog(@"new startPiece: %d", (int)startPiece);
+    //set first and last pieces
+    auto startPiece = request.piece;
+    auto finalPiece = startPiece; // + libtorrent::piece_index_t(MIN_PIECES - 1);
+    for (int i=0; i < MIN_PIECES; i++) {
+        finalPiece++;
         
         //check if we are over the total pieces of the selected file
-        if (request.piece >= lastFilePiece) {
+        if (finalPiece > lastFilePiece) {
             finalPiece = lastFilePiece;
+            break;
         }
-        
-        //set global variables
-        firstPiece = startPiece;
-        endPiece = finalPiece;
-        
-        //if we already have the requested part of the movie return immediately
-        for(piece_index_t j=startPiece; j<=finalPiece; j++){
-            if (!torrent.have_piece(j)) {
-                break;
-            } else if (j==finalPiece) {
-                return YES;
-            }
+    }
+    
+    NSLog(@"new startPiece: %d", (int)startPiece);
+    
+    //if we already have the requested part of the movie return immediately
+    for(auto j = startPiece; j <= finalPiece; j++){
+        if (!torrent.have_piece(j)) {
+            break;
+        } else if (j==finalPiece) {
+            return YES;
         }
-        
-        //take control of the array from all of the other threads that might be accessing it
-        mtx.lock();
-        required_pieces.clear(); //clear all the pieces we wanted to download previously
-        mtx.unlock();
-        
-        //start to download the requested part of the movie
-        [self prioritizeNextPieces:torrent];
+    }
+    
+    //set global variables
+    firstPiece = startPiece;
+    endPiece = finalPiece;
+    
+    //take control of the array from all of the other threads that might be accessing it
+    mtx.lock();
+    required_pieces.clear(); //clear all the pieces we wanted to download previously
+    mtx.unlock();
+    
+    //start to download the requested part of the movie
+    [self prioritizeNextPieces:torrent];
     
     return NO;
     
@@ -505,7 +506,6 @@ using namespace libtorrent;
     auto copyRequired(required_pieces);
     
     for (piece_index_t piece: copyRequired) {
-//        if(_session->is_paused())break;
         if (th.have_piece(piece) == false) {
             allRequiredPiecesDownloaded = NO;
         }else{

@@ -27,7 +27,7 @@ using namespace libtorrent;
     libtorrent::piece_index_t endPiece;
     libtorrent::piece_index_t lastFilePiece;
     std::mutex mtx;
-    int MIN_PIECES; //they are calculated by divind the 5% of a torrent file size with the size of a torrent piece / selected file in case we load a multi movie torrent
+    int MIN_PIECES; //they are calculated by divind the 3% of a torrent file size with the size of a torrent piece / selected file in case we load a multi movie torrent
     int selectedFileIndex;
 }
 

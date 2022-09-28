@@ -6,3 +6,4 @@
 #import "PTTorrentDownloadStatus.h"
 #import "PTTorrentStatus.h"
 #import "PTTorrentDownloadManagerListener.h"
+#import "PTTorrentsSession.h"

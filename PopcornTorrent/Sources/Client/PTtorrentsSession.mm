@@ -28,17 +28,15 @@ using namespace libtorrent;
 @interface PTTorrentsSession () {
 }
 
+@property (nonatomic, strong) NSMutableDictionary<NSString *, PTTorrentStreamer *> *streamers; // hash Id as key
 @property (nonatomic, strong, nullable) dispatch_queue_t alertsQueue;
 @property (nonatomic, getter=isAlertsLoopActive) BOOL alertsLoopActive;
+
 
 @end
 
 @implementation PTTorrentsSession {
     libtorrent::session *_session;
-}
-
-+ (void)load {
-    [PTTorrentsSession sharedSession];
 }
 
 + (instancetype)sharedSession {

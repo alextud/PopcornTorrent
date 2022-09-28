@@ -18,7 +18,7 @@ let package = Package(
             name: "PopcornTorrent",
             dependencies: ["GCDWebServer"],
             path: "PopcornTorrent/Sources",
-            exclude: ["torrent/Jamfile", "torrent/LICENSE"],
+            exclude: [],
             cxxSettings: [
                 .define("TARGET_OS_IOS", .when(platforms: [.iOS])),
                 .define("TARGET_OS_TV", .when(platforms: [.tvOS])),
