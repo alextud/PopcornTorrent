@@ -229,6 +229,11 @@ using namespace libtorrent;
 - (void)playWithHandler:(PTTorrentStreamerReadyToPlay)handler {
     if (_downloadStatus == PTTorrentDownloadStatusDownloading) {
         self.readyToPlayBlock = handler;
+        // start player
+        if (self.torrentStatus.totalProgress > 0.5) {
+            self.streaming = YES;
+            [self startWebServerAndPlay];
+        }
     } else if (_downloadStatus == PTTorrentDownloadStatusFinished) {
         NSURL *fileURL = [NSURL fileURLWithPath:[self.savePath stringByAppendingPathComponent:_fileName]];
         handler(fileURL, fileURL);
@@ -238,6 +243,7 @@ using namespace libtorrent;
 - (void)cancelStreamingAndDeleteData:(BOOL)deleteData {
     if (self.isStreaming && _downloadStatus == PTTorrentDownloadStatusDownloading) {
         self.readyToPlayBlock = nil;
+        self.streaming = FALSE;
     } else {
         [super cancelStreamingAndDeleteData:deleteData];
     }
