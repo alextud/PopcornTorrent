@@ -14,6 +14,8 @@
 #import <libtorrent/alert_types.hpp>
 #import <libtorrent/bencode.hpp>
 #import <libtorrent/write_resume_data.hpp>
+#import <libtorrent/extensions/smart_ban.hpp>
+#import <libtorrent/extensions/ut_metadata.hpp>
 #include "libtorrent/hex.hpp" // to_hex
 
 
@@ -59,6 +61,10 @@ using namespace libtorrent;
     _session = new session();
     settings_pack pack = default_settings();
     
+    auto dht_nodes = pack.get_str(settings_pack::dht_bootstrap_nodes);
+    dht_nodes += ",router.bittorrent.com:6881,router.utorrent.com:6881,router.bitcomet.com:6881,dht.transmissionbt.com:6881',dht.aelitis.com:6881,";
+    pack.set_str(settings_pack::dht_bootstrap_nodes, dht_nodes);
+    
     pack.set_str(settings_pack::listen_interfaces, "0.0.0.0:6881,[::]:6881");
     pack.set_int(settings_pack::max_retry_port_bind, 6889 - 6881);
     
@@ -78,6 +84,10 @@ using namespace libtorrent;
     pack.set_bool(settings_pack::upnp_ignore_nonrouters, true);
     pack.set_int(settings_pack::file_pool_size, 2);
     _session->apply_settings(pack);
+    
+    // Enabling plugins
+    _session->add_extension(&lt::create_smart_ban_plugin);
+    _session->add_extension(&lt::create_ut_metadata_plugin);
 }
 
 - (void)setupAlertLoop {
