@@ -285,29 +285,31 @@ using namespace libtorrent;
         auto ti = torrent.torrent_file();
         
         //find the torrent piece corresponding to the requested piece of the movie
-        NSInteger index = [self selectedFileIndexInTorrent:torrent];
-        peer_request request = ti->map_file(libtorrent::file_index_t(index), range.location, (int)range.length);
-        
+        auto index = file_index_t([self selectedFileIndexInTorrent:torrent]);
+        int64_t fileSize = ti->files().file_size(index);
+        int64_t forwardRange = range.location + range.length;
+        peer_request request = ti->map_file(index, range.location, uint(range.length));
+            
         //set first and last pieces
         auto startPiece = request.piece;
-        auto finalPiece = startPiece; // + libtorrent::piece_index_t(MIN_PIECES - 1);
-        for (int i=0; i < MIN_PIECES; i++) {
+        auto finalPiece = startPiece;
+        for (int i=0; i < MIN_PIECES - 1; i++) {
             finalPiece++;
-        }
-        
-        NSLog(@"new startPiece: %d", (int)startPiece);
-        
-        //check if we are over the total pieces of the selected file
-        if (request.piece >= lastFilePiece) {
-            finalPiece = lastFilePiece;
+            
+            //check if we are over the total pieces of the selected file
+            if (finalPiece > lastFilePiece) {
+                finalPiece = lastFilePiece;
+                break;
+            }
         }
         
         //set global variables
         firstPiece = startPiece;
         endPiece = finalPiece;
+        NSLog(@"new startPiece: %d", (int)startPiece);
         
         //if we already have the requested part of the movie return immediately
-        for(piece_index_t j=startPiece; j<=finalPiece; j++){
+        for(auto j = startPiece; j <= finalPiece; j++){
             if (!torrent.have_piece(j)) {
                 break;
             } else if (j==finalPiece) {
