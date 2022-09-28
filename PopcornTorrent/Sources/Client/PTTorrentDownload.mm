@@ -27,13 +27,13 @@ using namespace libtorrent;
 + (NSString *)downloadDirectory {
     NSURL *URL;
     
-    #if TARGET_OS_IOS
+#if TARGET_OS_IOS
     URL = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
-    #elif TARGET_OS_TV
+#elif TARGET_OS_TV
     URL = [[[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask] lastObject];
-    #elif TARGET_OS_MAC
+#elif TARGET_OS_MAC
     URL = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
-    #endif
+#endif
     
     NSString *downloadDirectory =  [[URL path] stringByAppendingPathComponent:@"Downloads"];
     
@@ -227,9 +227,20 @@ using namespace libtorrent;
 }
 
 - (void)playWithHandler:(PTTorrentStreamerReadyToPlay)handler {
-    if (_downloadStatus != PTTorrentDownloadStatusFinished) return;
-    self.readyToPlayBlock = handler;
-    [self startWebServerAndPlay];
+    if (_downloadStatus == PTTorrentDownloadStatusDownloading) {
+        self.readyToPlayBlock = handler;
+    } else if (_downloadStatus == PTTorrentDownloadStatusFinished) {
+        NSURL *fileURL = [NSURL fileURLWithPath:[self.savePath stringByAppendingPathComponent:_fileName]];
+        handler(fileURL, fileURL);
+    }
+}
+
+- (void)cancelStreamingAndDeleteData:(BOOL)deleteData {
+    if (self.isStreaming && _downloadStatus == PTTorrentDownloadStatusDownloading) {
+        self.readyToPlayBlock = nil;
+    } else {
+        [super cancelStreamingAndDeleteData:deleteData];
+    }
 }
 
 @end

@@ -338,17 +338,11 @@ using namespace libtorrent;
 }
 
 - (void)processTorrent:(torrent_handle)th {
+    _status = th.status();
     if ([self isStreaming]) return;
     
-    self.streaming = YES;
-    _status = th.status();
-    
-    auto ti = th.torrent_file();
-    int file_index = [self selectedFileIndexInTorrent:th];
-    std::string path = ti->files().file_path(file_index_t(file_index));
-    _fileName = [NSString stringWithCString:path.c_str() encoding:NSUTF8StringEncoding];
-    
     if (self.readyToPlayBlock) {
+        self.streaming = YES;
         dispatch_async(dispatch_get_main_queue(), ^{
             [self startWebServerAndPlay];
         });
@@ -494,6 +488,9 @@ using namespace libtorrent;
         th.set_piece_deadline(piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
     }
     _status = th.status();
+
+    std::string path = ti->files().file_path(file_index);
+    _fileName = [NSString stringWithCString:path.c_str() encoding:NSUTF8StringEncoding];
 }
 
 - (void)pieceFinishedAlert:(torrent_handle)th forPieceIndex:(piece_index_t)index {
