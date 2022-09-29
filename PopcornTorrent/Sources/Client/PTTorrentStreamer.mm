@@ -243,6 +243,11 @@ using namespace libtorrent;
         }
     }
     
+    // when video starts, we already have enough pieces downloaded so video ca start imediately
+    if (startPiece <= piece_index_t(6)) {
+        return YES;
+    }
+    
     //set global variables
     firstPiece = startPiece;
     endPiece = finalPiece;
