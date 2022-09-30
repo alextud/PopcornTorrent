@@ -230,7 +230,7 @@ using namespace libtorrent;
     if (_downloadStatus == PTTorrentDownloadStatusDownloading) {
         self.readyToPlayBlock = handler;
         // start player
-        if (self.torrentStatus.totalProgress > 0.5) {
+        if (self.torrentStatus.totalProgress > 0.1) {
             self.streaming = YES;
             [self startWebServerAndPlay];
         }
