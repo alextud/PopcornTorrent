@@ -127,7 +127,7 @@ using namespace libtorrent;
                                 [self torrentFinishedAlert:((torrent_finished_alert *)alert)->handle];
                                 break;
                             case save_resume_data_alert::alert_type: {
-                                [self resumeDataReadyAlertWithData:(save_resume_data_alert *)alert];
+                                [self saveResumeDataWithAlert:(save_resume_data_alert *)alert];
                                 break;
                             }
                             case file_error_alert::alert_type: {
@@ -223,14 +223,6 @@ using namespace libtorrent;
 #endif
 }
 
-- (void)resumeDataReadyAlertWithData:(save_resume_data_alert *)alert {
-    torrent_status st = alert->handle.status(torrent_handle::query_save_path
-                                             | torrent_handle::query_name);
-    NSString *directory =  [NSString stringWithUTF8String:(st.save_path + "/resumeData.fastresume").c_str()];
-    NSString *hashID = [self hashIDForTorrentHandle:alert->handle];
-    [self.streamers[hashID] resumeDataReadyAlertWithData:alert->params andSaveDirectory:directory];
-}
-
 - (void)fileErrorAlert:(file_error_alert *)alert {
     auto torrent = alert->handle;
     
@@ -238,6 +230,42 @@ using namespace libtorrent;
     NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-4 userInfo:@{NSLocalizedDescriptionKey: description}];
     NSString *hashID = [self hashIDForTorrentHandle:alert->handle];
     [self.streamers[hashID] handleTorrentError:error];
+}
+
+- (void)saveResumeDataWithAlert:(save_resume_data_alert *)alert {
+    torrent_status st = alert->handle.status(torrent_handle::query_save_path
+                                             | torrent_handle::query_name);
+    NSString *directory =  [NSString stringWithUTF8String:(st.save_path + "/resumeData.fastresume").c_str()];
+    NSString *hashID = [self hashIDForTorrentHandle:alert->handle];
+
+    auto const buf = write_resume_data_buf(alert->params);
+    std::string str(buf.begin(), buf.end());
+    
+    NSData *resumeDataFile = [[NSData alloc] initWithBytesNoCopy:(char *)str.c_str() length:str.size() freeWhenDone:false];
+    NSAssert(resumeDataFile != nil, @"Resume data failed to be generated");
+    [resumeDataFile writeToFile:[NSURL URLWithString:directory].relativePath atomically:NO];
+}
+
+- (BOOL)tryToResumeTorrentParams:(add_torrent_params *)torrentParams atPath:(NSString *)directory {
+    NSData *resumeData = [NSData dataWithContentsOfFile:[directory stringByAppendingString:@"/resumeData.fastresume"] ];
+    if (resumeData == nil) {
+        return NO;
+    }
+
+    error_code ec;
+    add_torrent_params resumeParams;
+
+    unsigned long int len = resumeData.length;
+    //read resume file
+    std::vector<char> resumeVector((char *)resumeData.bytes, (char *)resumeData.bytes + len);
+    resumeParams = read_resume_data(resumeVector, ec); //load it into the torrent
+    if (ec) { 
+        std::printf("  failed to load resume data: %s\n", ec.message().c_str());
+        return NO;
+    }
+
+    *torrentParams = resumeParams;
+    return YES;
 }
 
 @end

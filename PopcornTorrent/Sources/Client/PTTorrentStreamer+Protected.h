@@ -52,7 +52,6 @@ using namespace libtorrent;
 - (void)metadataReceivedAlert:(torrent_handle)th;
 - (void)pieceFinishedAlert:(torrent_handle)th forPieceIndex:(piece_index_t)index;
 - (void)torrentFinishedAlert:(torrent_handle)th;
-- (void)resumeDataReadyAlertWithData:(add_torrent_params)resumeData andSaveDirectory:(NSString *_Nonnull)directory;
 - (void)handleTorrentError:(NSError *_Nullable)error;
 
 @end

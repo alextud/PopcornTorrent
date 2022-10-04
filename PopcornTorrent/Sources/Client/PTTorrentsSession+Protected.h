@@ -13,5 +13,6 @@
 
 - (libtorrent::torrent_handle)addTorrent:(PTTorrentStreamer *)torrentStreamer params:(libtorrent::add_torrent_params)torrentParams error:(NSError **)error;
 - (void)removeTorrent:(PTTorrentStreamer *)torrentStreamer;
+- (BOOL)tryToResumeTorrentParams:(libtorrent::add_torrent_params *)torrentParams atPath:(NSString *)directory;
 
 @end

@@ -170,20 +170,12 @@ using namespace libtorrent;
         }
     } else if ([filePathOrMagnetLink hasPrefix:@"magnet"] && fastResume){
         //if folder exists already and we are loading a magnet search for resume file
-        NSData *resumeData = [NSData dataWithContentsOfFile:[_savePath stringByAppendingString:@"/resumeData.fastresume"] ];
-        if (resumeData != nil){
-            unsigned long int len = resumeData.length;
-            //read resume file
-            std::vector<char> resumeVector((char *)resumeData.bytes, (char *)resumeData.bytes + len);
-            tp = read_resume_data(resumeVector, ec);//load it into the torrent
-            didTryFastResume = true;
-            if (ec) std::printf("  failed to load resume data: %s\n", ec.message().c_str());
-        }
-        ec.clear();
+        [[PTTorrentsSession sharedSession] tryToResumeTorrentParams:&tp atPath:_savePath];
+        didTryFastResume = true;
     }
     
     tp.save_path = std::string([self.savePath UTF8String]);
-    tp.storage_mode = storage_mode_allocate;
+    // tp.storage_mode = storage_mode_allocate;
     
     NSError *error;
     self.torrentHandle = [[PTTorrentsSession sharedSession] addTorrent:self params:tp error:&error];
@@ -459,14 +451,43 @@ using namespace libtorrent;
     
     auto ti = th.torrent_file();
     int64_t file_size = ti->files().file_size(file_index);
-    if (file_size > availableSpace.longLongValue) {
+    std::string path = ti->files().file_path(file_index);
+    _fileName = [NSString stringWithCString:path.c_str() encoding:NSUTF8StringEncoding];
+    NSString *filePath = [self.savePath stringByAppendingPathComponent:_fileName];
+    int64_t requiredSize = file_size;
+
+    // check if file already downloaded to ignore used space, so it will not be downloaded again from scratch
+    if ([[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
+        NSDictionary *fileAttributes = [[NSFileManager defaultManager] attributesOfItemAtPath:filePath error:nil];
+        long long fileSize = [[fileAttributes objectForKey:NSFileSize] longLongValue];
+        requiredSize -= fileSize;
+    }
+
+    if (requiredSize > availableSpace.longLongValue) {
         PTSize *fileSize = [PTSize sizeWithLongLong: file_size];
         NSString *description = [NSString localizedStringWithFormat:@"There is not enough space to download the torrent. Please clear at least %@ and try again.".localizedString, fileSize.stringValue];
         NSError *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-4 userInfo:@{NSLocalizedDescriptionKey: description}];
         [self handleTorrentError:error];
         return;
     }
+
+    _status = th.status();
+    _torrentStatus = {
+        0,
+        _status.progress,
+        _status.download_rate,
+        _status.upload_rate,
+        _status.num_seeds,
+        _status.num_peers
+    };
+    _totalDownloaded = _status.total_wanted_done;
+    _isFinished = _status.is_finished;
     
+    // file already downloaded
+    if (_isFinished) {
+        [self torrentFinishedAlert:th];
+        return;
+    }
     
     // download first pieces
     MIN_PIECES = (ti->files().file_size(file_index) * 0.03) / ti->piece_length();
@@ -492,22 +513,6 @@ using namespace libtorrent;
         th.piece_priority(piece, top_priority);
         th.set_piece_deadline(piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
     }
-    _status = th.status();
-
-    std::string path = ti->files().file_path(file_index);
-    _fileName = [NSString stringWithCString:path.c_str() encoding:NSUTF8StringEncoding];
-
-    _torrentStatus = {
-        0,
-        _status.progress,
-        _status.download_rate,
-        _status.upload_rate,
-        _status.num_seeds,
-        _status.num_peers
-    };
-    
-    _totalDownloaded = _status.total_wanted_done;
-    _isFinished = _status.is_finished;
     
     dispatch_async(dispatch_get_main_queue(), ^{
         if (_progressBlock) _progressBlock(_torrentStatus);
@@ -589,20 +594,6 @@ using namespace libtorrent;
     [[PTTorrentsSession sharedSession] removeTorrent:self];
     // Remove the torrent when its finished
     // th.pause(torrent_handle::graceful_pause);
-}
-
-- (void)resumeDataReadyAlertWithData:(add_torrent_params)resumeData andSaveDirectory:(NSString*)directory {
-    auto const buf = write_resume_data_buf(resumeData);
-
-    std::stringstream ss;
-    ss.unsetf(std::ios_base::skipws);
-    bencode(std::ostream_iterator<char>(ss), buf);
-    
-    NSData *resumeDataFile = [[NSData alloc] initWithBytesNoCopy:(void*)ss.str().c_str() length:ss.str().size() freeWhenDone:false];
-    NSAssert(resumeDataFile != nil, @"Resume data failed to be generated");
-    [resumeDataFile writeToFile:[NSURL URLWithString:directory].relativePath atomically:NO];
-    [self setupSession];
-    [[PTTorrentsSession sharedSession] removeTorrent:self];
 }
 
 @end
