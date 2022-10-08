@@ -398,7 +398,7 @@ using namespace libtorrent;
         }
     }
     
-    __block NSURL *serverURL = self.mediaServer.serverURL;
+    __block NSURL *serverURL = nil; // ios now requires permission to access local network// self.mediaServer.serverURL;
     
     if (serverURL == nil) // `nil` when device is on cellular network.
     {
@@ -471,17 +471,7 @@ using namespace libtorrent;
         return;
     }
 
-    _status = th.status();
-    _torrentStatus = {
-        0,
-        _status.progress,
-        _status.download_rate,
-        _status.upload_rate,
-        _status.num_seeds,
-        _status.num_peers
-    };
-    _totalDownloaded = _status.total_wanted_done;
-    _isFinished = _status.is_finished;
+    [self updateAndMonitorTorrentProgress];
     
     // file already downloaded
     if (_isFinished) {
@@ -513,10 +503,30 @@ using namespace libtorrent;
         th.piece_priority(piece, top_priority);
         th.set_piece_deadline(piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
     }
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (_progressBlock) _progressBlock(_torrentStatus);
-        [[NSNotificationCenter defaultCenter] postNotificationName:PTTorrentStatusDidChangeNotification object:self];
+}
+
+- (void)updateAndMonitorTorrentProgress {
+    if (!_progressBlock || !_torrentHandle.is_valid() || _status.is_finished) {
+        return;
+    }
+
+    _status = _torrentHandle.status();
+    _torrentStatus = {
+        _torrentStatus.bufferingProgress,
+        _status.progress,
+        _status.download_rate,
+        _status.upload_rate,
+        _status.num_seeds,
+        _status.num_peers
+    };
+    _totalDownloaded = _status.total_wanted_done;
+    _isFinished = _status.is_finished;
+
+    _progressBlock(_torrentStatus);
+    [[NSNotificationCenter defaultCenter] postNotificationName:PTTorrentStatusDidChangeNotification object:self];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        [self updateAndMonitorTorrentProgress];
     });
 }
 
