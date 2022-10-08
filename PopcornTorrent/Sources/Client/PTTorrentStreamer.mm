@@ -522,8 +522,10 @@ using namespace libtorrent;
     _totalDownloaded = _status.total_wanted_done;
     _isFinished = _status.is_finished;
 
-    _progressBlock(_torrentStatus);
-    [[NSNotificationCenter defaultCenter] postNotificationName:PTTorrentStatusDidChangeNotification object:self];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        _progressBlock(_torrentStatus);
+        [[NSNotificationCenter defaultCenter] postNotificationName:PTTorrentStatusDidChangeNotification object:self];
+    });
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         [self updateAndMonitorTorrentProgress];
