@@ -53,5 +53,6 @@ using namespace libtorrent;
 - (void)pieceFinishedAlert:(torrent_handle)th forPieceIndex:(piece_index_t)index;
 - (void)torrentFinishedAlert:(torrent_handle)th;
 - (void)handleTorrentError:(NSError *_Nullable)error;
+- (void)prioritizeNextPieces:(torrent_handle)th;
 
 @end

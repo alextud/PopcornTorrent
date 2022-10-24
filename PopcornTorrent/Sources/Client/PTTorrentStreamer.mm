@@ -481,6 +481,7 @@ using namespace libtorrent;
     
     // download first pieces
     MIN_PIECES = (ti->files().file_size(file_index) * 0.03) / ti->piece_length();
+    MIN_PIECES = std::min(MIN_PIECES, 20);
     piece_index_t first_piece = ti->map_file(file_index, 0, 0).piece;
     for (int i = 0; i < MIN_PIECES; i++) {
         required_pieces.push_back(first_piece);
@@ -494,11 +495,15 @@ using namespace libtorrent;
         required_pieces.push_back(last_piece);
         last_piece--;
     }
+
+    // don't download intermediate pieces when streaming starts
+    piece_index_t piece = first_piece;
+    do {
+        th.piece_priority(piece, dont_download);
+        piece++;
+    } while (piece <= last_piece);
     
     th.clear_piece_deadlines();
-    auto piece_priorities = th.get_piece_priorities();
-    std::fill(piece_priorities.begin(), piece_priorities.end(), low_priority);
-    th.prioritize_pieces(piece_priorities);
     for (piece_index_t piece : required_pieces) {
         th.piece_priority(piece, top_priority);
         th.set_piece_deadline(piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
@@ -523,7 +528,7 @@ using namespace libtorrent;
     _isFinished = _status.is_finished;
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        _progressBlock(_torrentStatus);
+        if (_progressBlock) _progressBlock(_torrentStatus);
         [[NSNotificationCenter defaultCenter] postNotificationName:PTTorrentStatusDidChangeNotification object:self];
     });
 

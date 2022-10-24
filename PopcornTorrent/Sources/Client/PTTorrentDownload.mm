@@ -230,7 +230,7 @@ using namespace libtorrent;
     if (_downloadStatus == PTTorrentDownloadStatusDownloading) {
         self.readyToPlayBlock = handler;
         // start player
-        if (self.torrentStatus.totalProgress > 0.1) {
+        if (self.torrentStatus.totalProgress > 0.03) {
             self.streaming = YES;
             [self startWebServerAndPlay];
         }
@@ -246,9 +246,19 @@ using namespace libtorrent;
         self.streaming = FALSE;
         if (self.mediaServer.isRunning) [self.mediaServer stop];
         [self.mediaServer removeAllHandlers];
+        self.mediaServer = [[GCDWebServer alloc] init];
     } else {
         [super cancelStreamingAndDeleteData:deleteData];
     }
 }
+
+// - (void)prioritizeNextPieces:(torrent_handle)th {
+//     if (self.isStreaming) {
+//         [super prioritizeNextPieces:th];
+//     } else {
+//         auto piece_priorities = th.get_piece_priorities();
+//         std::fill(piece_priorities.begin(), piece_priorities.end(), low_priority);
+//     }
+// }
 
 @end
