@@ -34,7 +34,7 @@ let package = Package(
         .testTarget(name: "PopcornTorrent-Tests",
                     dependencies: [.targetItem(name: "PopcornTorrent", condition: nil)],
                     path: "PopcornTorrentTests",
-                    resources: [.process("Test.torrent")],
+                    resources: [.copy("big-buck-bunny.torrent")],
                     linkerSettings: [
                         .linkedFramework("MediaPlayer")
                     ]

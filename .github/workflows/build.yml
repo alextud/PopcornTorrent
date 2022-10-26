@@ -10,6 +10,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3.0.0
+    
+    - uses: actions/cache@v3
+      name: "Get cache"
+      with:
+        path: ~/Library/Developer/Xcode/DerivedData/PopcornTorrent*
+        key: ${{ runner.os }}-cache
+        restore-keys: |
+            ${{ runner.os }}-cache
                 
     - name: "Run Tests"
       run: |
