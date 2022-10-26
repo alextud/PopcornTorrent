@@ -8,7 +8,9 @@ jobs:
 
     runs-on: macOS-12
 
-    steps:                
+    steps:
+    - uses: actions/checkout@v3.0.0
+                
     - name: "Run Tests"
       run: |
         xcodebuild \
