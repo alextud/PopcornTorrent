@@ -72,7 +72,7 @@
 -(void)testTorrentFileStreaming {
     XCTestExpectation *expectation = [self expectationWithDescription:@"Torrent file streaming"];
     
-    NSString *filePath = [[[NSBundle bundleForClass:[self class]] resourcePath] stringByAppendingString:@"/PopcornTorrent_PopcornTorrent-Tests.bundle/Contents/Resources/big-buck-bunny.torrent"];
+    NSString *filePath = [[[NSBundle bundleForClass:[self class]] resourcePath] stringByAppendingString:@"/PopcornTorrent_PopcornTorrent-Tests.bundle/big-buck-bunny.torrent"];
     NSLog(@"torrent file: %@", filePath);
     PTTorrentStreamer *streamer = [[PTTorrentStreamer alloc] init];
     [streamer startStreamingFromMultiTorrentFileOrMagnetLink:filePath progress:^(PTTorrentStatus status) {
