@@ -15,7 +15,7 @@ clean() {
 
 download() {
 	curl -L -o ${LIBTORRENT_TARBALL} \
-        "https://github.com/arvidn/libtorrent/releases/download/v1.2.17/libtorrent-rasterbar-1.2.17.tar.gz"
+        "https://github.com/arvidn/libtorrent/releases/download/v1.2.18/libtorrent-rasterbar-1.2.18.tar.gz"
 }
 
 # torrent 2.0.6
@@ -29,7 +29,7 @@ download() {
 #    cp -r "${BUILD_DIR}/include/libtorrent" "${DIR}/include"
 #}
 
-# torrent 1.2.17
+# torrent 1.2.18
 extract() {
     rm -rf ${BUILD_DIR} && mkdir -p ${BUILD_DIR}
     rm -rf ${SRC_DIR}

@@ -526,7 +526,7 @@ namespace libtorrent {
 		void resume();
 
 		void set_session_paused(bool b);
-		void set_paused(bool b, pause_flags_t flags = torrent_handle::clear_disk_cache);
+		void set_paused(bool b, pause_flags_t flags = {});
 		void set_announce_to_dht(bool b) { m_announce_to_dht = b; }
 		void set_announce_to_trackers(bool b) { m_announce_to_trackers = b; }
 		void set_announce_to_lsd(bool b) { m_announce_to_lsd = b; }
@@ -535,7 +535,7 @@ namespace libtorrent {
 
 		time_point32 started() const { return m_started; }
 		void step_session_time(int seconds);
-		void do_pause(pause_flags_t flags = torrent_handle::clear_disk_cache, bool was_paused = false);
+		void do_pause(bool was_paused = false);
 		void do_resume();
 
 		seconds32 finished_time() const;
@@ -552,7 +552,9 @@ namespace libtorrent {
 
 		void set_need_save_resume()
 		{
+			if (m_need_save_resume_data) return;
 			m_need_save_resume_data = true;
+			state_updated();
 		}
 
 		bool is_auto_managed() const { return m_auto_managed; }
@@ -1189,6 +1191,8 @@ namespace libtorrent {
 		}
 		void add_suggest_piece(piece_index_t index);
 
+		void* get_userdata() const { return m_userdata; }
+
 		static constexpr int no_gauge_state = 0xf;
 
 	private:
@@ -1684,6 +1688,9 @@ namespace libtorrent {
 		// the timestamp of the last byte uploaded from this torrent specified in
 		// seconds since epoch.
 		time_point32 m_last_upload{seconds32(0)};
+
+		// user data as passed in by add_torrent_params
+		void* m_userdata;
 
 // ----
 
