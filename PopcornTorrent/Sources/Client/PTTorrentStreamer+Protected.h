@@ -1,5 +1,6 @@
 
 #import "PTTorrentStreamer.h"
+#import "PTTorrentsSession.h"
 #import <libtorrent/session.hpp>
 #import <libtorrent/torrent_info.hpp>
 #import <libtorrent/add_torrent_params.hpp>
@@ -33,6 +34,9 @@ using namespace libtorrent;
 
 @property (nonatomic, getter=isStreaming) BOOL streaming;
 @property (nonatomic, strong, nonnull) NSMutableDictionary *requestedRangeInfo;
+
+@property (nonatomic, strong, nonnull) PTTorrentsSession *session;
+@property (nonatomic) bool deleteOnlyDownloadedFile;
 
 @property (nonatomic, copy, nullable) PTTorrentStreamerProgress progressBlock;
 @property (nonatomic, copy, nullable) PTTorrentStreamerReadyToPlay readyToPlayBlock;

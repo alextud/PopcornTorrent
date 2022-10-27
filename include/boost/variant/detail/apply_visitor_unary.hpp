@@ -96,7 +96,8 @@ struct result_multideduce1 {
     struct deduce_impl {
         typedef typename boost::mpl::next<It>::type next_t;
         typedef typename boost::mpl::deref<It>::type value_t;
-        typedef decltype(boost::declval< typename deduce_impl<next_t>::type >()) type;
+        typedef decltype(true ? boost::declval< Visitor& >()( boost::declval< copy_cv_ref_t< value_t, Variant > >() )
+                              : boost::declval< typename deduce_impl<next_t>::type >()) type;
     };
 
     template <class Dummy>

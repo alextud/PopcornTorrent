@@ -25,6 +25,7 @@ using namespace libtorrent;
     self = [super init];
     if (self) {
         selectedFileIndex = -1;
+        self.session = [PTTorrentsSession sharedSession];
         [self setupSession];
     }
     return self;
@@ -170,7 +171,7 @@ using namespace libtorrent;
         }
     } else if ([filePathOrMagnetLink hasPrefix:@"magnet"] && fastResume){
         //if folder exists already and we are loading a magnet search for resume file
-        [[PTTorrentsSession sharedSession] tryToResumeTorrentParams:&tp atPath:_savePath];
+        [self.session tryToResumeTorrentParams:&tp atPath:_savePath];
         didTryFastResume = true;
     }
     
@@ -178,7 +179,16 @@ using namespace libtorrent;
     // tp.storage_mode = storage_mode_allocate;
     
     NSError *error;
-    self.torrentHandle = [[PTTorrentsSession sharedSession] addTorrent:self params:tp error:&error];
+    _torrentHandle = [self.session addTorrent:self params:tp error:&error];
+    
+    // torrent exists, give it a new session, so there is no interference
+    if (error && error.code == -2) {
+        self.session = [[PTTorrentsSession alloc] init];
+        self.deleteOnlyDownloadedFile = YES;
+        PTTorrentStreamer *existing = [[PTTorrentsSession sharedSession] torrentStreamerForTorrentHandle:_torrentHandle];
+        existing.deleteOnlyDownloadedFile = YES;
+        _torrentHandle = [self.session addTorrent:self params:tp error:&error];
+    }
     
     if (error) {
         if (didTryFastResume) {
@@ -198,7 +208,7 @@ using namespace libtorrent;
         return;
     }
     
-    if (![filePathOrMagnetLink hasPrefix:@"magnet"]) {
+    if (![filePathOrMagnetLink hasPrefix:@"magnet"] || _torrentHandle.status().has_metadata) {
         [self metadataReceivedAlert:_torrentHandle];
     }
 }
@@ -268,7 +278,7 @@ using namespace libtorrent;
 
 
 - (void)cancelStreamingAndDeleteData:(BOOL)deleteData {
-    [[PTTorrentsSession sharedSession] removeTorrent:self];
+    [self.session removeTorrent:self];
     
     required_pieces.clear();
     required_pieces.shrink_to_fit();
@@ -291,7 +301,13 @@ using namespace libtorrent;
     _isFinished = false;
     
     if (deleteData) {
-        [[NSFileManager defaultManager] removeItemAtPath:self.savePath error:nil];
+        if (self.deleteOnlyDownloadedFile) {
+            NSString *filePath = [self.savePath stringByAppendingPathComponent:_fileName];
+            [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
+        } else {
+            // delete whole directory
+            [[NSFileManager defaultManager] removeItemAtPath:self.savePath error:nil];
+        }
         _savePath = nil;
         _fileName = nil;
         _requiredSpace = 0;
@@ -317,7 +333,6 @@ using namespace libtorrent;
     required_pieces.clear();
     
     auto piece_priorities = th.get_piece_priorities();
-    auto ti = th.torrent_file();
     th.clear_piece_deadlines();//clear all deadlines on all pieces before we set new ones
     std::fill(piece_priorities.begin(), piece_priorities.end(), low_priority);
     th.prioritize_pieces(piece_priorities);
@@ -608,7 +623,7 @@ using namespace libtorrent;
         [[NSNotificationCenter defaultCenter] postNotificationName:PTTorrentStatusDidChangeNotification object:self];
     });
     
-    [[PTTorrentsSession sharedSession] removeTorrent:self];
+    [self.session removeTorrent:self];
     // Remove the torrent when its finished
     // th.pause(torrent_handle::graceful_pause);
 }

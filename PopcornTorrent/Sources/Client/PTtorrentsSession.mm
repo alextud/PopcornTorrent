@@ -150,7 +150,12 @@ using namespace libtorrent;
 
 - (NSString *)hashIDForTorrentHandle:(torrent_handle)th {
     NSString *hashId = [NSString stringWithCString:aux::to_hex(th.info_hash()).c_str() encoding:NSUTF8StringEncoding];
-    return  hashId;
+    return hashId;
+}
+
+- (PTTorrentStreamer *)torrentStreamerForTorrentHandle:(libtorrent::torrent_handle)torrentHandle {
+    NSString *hashID = [self hashIDForTorrentHandle:torrentHandle];
+    return self.streamers[hashID];
 }
 
 - (void)metadataReceivedAlert:(torrent_handle)th {
@@ -177,6 +182,11 @@ using namespace libtorrent;
     th.set_max_uploads(10);
     
     NSString *hashId = [self hashIDForTorrentHandle:th];
+    if (self.streamers[hashId] != nil) {
+        *error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-2 userInfo:@{NSLocalizedDescriptionKey: @"Torrent already added (multiple files in same torrent not supported on same torrentsession)"}];
+        return th;
+    }
+    
     self.streamers[hashId] = torrentStreamer;
     
 #if TARGET_OS_IOS
@@ -205,13 +215,14 @@ using namespace libtorrent;
     
     self.streamers[hashId] = NULL;
     
-    torrent.pause();
     if (torrent.need_save_resume_data()) {
         torrent.save_resume_data();
     }
     torrent.flush_cache();
     
-    _session->remove_torrent(torrent);
+    // Remove the torrent when its finished
+    torrent.pause(torrent_handle::graceful_pause);
+//    _session->remove_torrent(torrent); // not removing because it might crash on stale tracker that don't respond
 
 #if TARGET_OS_IOS
     if (_session->get_torrents().empty()) {

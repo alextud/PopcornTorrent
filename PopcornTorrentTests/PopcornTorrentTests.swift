@@ -10,70 +10,63 @@ import XCTest
 
 class PopcornTorrentTests: XCTestCase {
     
-    func testMultiTorrentStreaming() {
+    var completeSeasonMagnetLink = "magnet:?xt=urn:btih:c17d1a8de4254ae098206d245aeb78754d798f9f&amp;dn=House.of.the.Dragon.S01.COMPLETE.720p.HMAX.WEBRip.x264-GalaxyTV&amp;tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&amp;tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.cyberia.is%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&amp;tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.birkenwald.de%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.moeking.me%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Fipv4.tracker.harry.lu%3A80%2Fannounce&amp;tr=udp%3A%2F%2F9.rarbg.me%3A2970%2Fannounce"
+    
+    func test1MultiTorrentStreaming() {
         let expectation = self.expectation(description: "Multiple torrent streaming")
-        var count = 2
+        var count = 3
         let completion = {
             count -= 1
             if count == 0 {
                 expectation.fulfill()
             }
         }
-        magnetLinkStreaming(deleteFileAfter: false, completion: completion)
-        selectiveMagnetLinkStreaming(deleteFileAfter: true, completion: completion)
+        magnetLinkStreaming(magnetLink: completeSeasonMagnetLink, fileIndex: 2, deleteFileAfter: false, completion: completion)
+        torrentFileStreaming(deleteFileAfter: true, completion: completion)
+        let sameTorrentexpectation =  self.expectation(description:"Same magnet link, second file");
+        magnetLinkStreaming(magnetLink: completeSeasonMagnetLink, fileIndex: 3, deleteFileAfter: true, completion: {
+            sameTorrentexpectation.fulfill()
+            completion()
+        })
+        
         //Wait 10 minutes
         self.waitForExpectations(timeout: 60.0 * 10, handler: { _ in })
     }
     
-    func testTorrentResuming() {
+    func test2TorrentResuming() {
         let expectation =  self.expectation(description:"Torrent resume");
-        magnetLinkStreaming(deleteFileAfter: true, completion: { expectation.fulfill() })
+        magnetLinkStreaming(magnetLink: completeSeasonMagnetLink, fileIndex: 2, deleteFileAfter: true, completion: { expectation.fulfill() })
         // wait for 10 seconds
-        self.waitForExpectations(timeout: 10, handler: { _ in })
+        self.waitForExpectations(timeout: 60*10, handler: { _ in })
     }
     
-    func magnetLinkStreaming(deleteFileAfter: Bool, completion: @escaping () -> Void) {
-        print("Selective Magnet link streaming")
-        let streamer = PTTorrentStreamer()
-        streamer.startStreaming(fromMultiTorrentFileOrMagnetLink: "magnet:?xt=urn:btih:0F29E13E18C63B6066EE7DA89D6181F3ABBE9D97&amp;dn=Top+Gun+%3A+Maverick+%282022%29+1080p+HDCAM+x264+AAC+-+QRips&amp;tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&amp;tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce&amp;tr=udp%3A%2F%2F9.rarbg.me%3A2970%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.tiny-vps.com%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.internetwarriors.net%3A1337%2Fannounce&amp;tr=udp%3A%2F%2Fopentor.org%3A2710%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&amp;tr=udp%3A%2F%2Fexplodie.org%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.moeking.me%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.cyberia.is%3A6969%2Fannounce&amp;tr=udp%3A%2F%2F9.rarbg.me%3A2980%2Fannounce&amp;tr=udp%3A%2F%2F9.rarbg.to%3A2940%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.uw0.xyz%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&amp;tr=http%3A%2F%2Ftracker.openbittorrent.com%3A80%2Fannounce&amp;tr=udp%3A%2F%2Fopentracker.i2p.rocks%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.internetwarriors.net%3A1337%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Fcoppersurfer.tk%3A6969%2Fannounce&amp;tr=udp%3A%2F%2Ftracker.zer0day.to%3A1337%2Fannounce") { status in
-            print("Progress: ", status.totalProgress)
-        } readyToPlay: { videoFileURL, videoUrl in
-            print(videoFileURL)
-            XCTAssertNotNil(videoFileURL, "No file URL");
-            streamer.cancelStreamingAndDeleteData(deleteFileAfter)
-            completion()
-        } failure: { error in
-            XCTFail(error.localizedDescription)
-            completion()
-        } selectFileToStream: { torrentNames, fileSizes in
-            return 0; // first file
-        }
-    }
-    
-    func selectiveMagnetLinkStreaming(deleteFileAfter: Bool, completion: @escaping () -> Void) {
+    func magnetLinkStreaming(magnetLink: String, fileIndex: Int, deleteFileAfter: Bool, completion: @escaping () -> Void) {
+        let expectation = self.expectation(description: "Selective Magnet link streaming")
         print("Selective Magnet link streaming")
         let streamer = PTTorrentStreamer()
         var selectedTorrent: String? = nil
-        streamer.startStreaming(fromMultiTorrentFileOrMagnetLink: "magnet:?xt=urn:btih:D4161A18932C75F598853910C581ECCFA2A43929&dn=La+Casa+De+Papel+AKA+Money+Heist+%282019%29+Season+03+Complete+720p+WEB-DL+x264+AAC+ESub+%5BEnglish+DD5.1%5D+3.3GB+%5BCraZzyBoY%5D&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.open-internet.nl%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.internetwarriors.net%3A1337%2Fannounce&tr=udp%3A%2F%2F9.rarbg.me%3A2710%2Fannounce&tr=udp%3A%2F%2F9.rarbg.to%3A2710%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A80%2Fannounce&tr=http%3A%2F%2Ftracker3.itzmx.com%3A6961%2Fannounce&tr=http%3A%2F%2Ftracker1.itzmx.com%3A8080%2Fannounce&tr=udp%3A%2F%2Ftracker.zer0day.to%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969%2Fannounce&tr=udp%3A%2F%2Fcoppersurfer.tk%3A6969%2Fannounce") { status in
-            print("Progress: ", status.totalProgress)
+        streamer.startStreaming(fromMultiTorrentFileOrMagnetLink: magnetLink) { status in
+            print("Progress fileIndex - \(fileIndex): ", status.totalProgress)
         } readyToPlay: { videoFileURL, videoUrl in
             print(videoFileURL)
             XCTAssertNotNil(videoFileURL, "No file URL")
             XCTAssertEqual(videoUrl.lastPathComponent, selectedTorrent)
             streamer.cancelStreamingAndDeleteData(deleteFileAfter)
+            expectation.fulfill()
             completion()
         } failure: { error in
             XCTFail(error.localizedDescription)
+            expectation.fulfill()
             completion()
         } selectFileToStream: { torrentNames, fileSizes in
             XCTAssertNotEqual(torrentNames.count, 0);
             print("Available names are \n", torrentNames.joined(separator: "\n"))
-            selectedTorrent = torrentNames[2]
-            return 2; // first file
+            selectedTorrent = torrentNames[fileIndex]
+            return Int32(fileIndex);
         }
     }
     
-    func testTorrentFileStreaming() {
+    func torrentFileStreaming(deleteFileAfter: Bool, completion: @escaping () -> Void) {
         let expectation = self.expectation(description: "Torrent file streaming")
         
         let filePath = Bundle.module.path(forResource: "big-buck-bunny", ofType: "torrent")
@@ -87,14 +80,14 @@ class PopcornTorrentTests: XCTestCase {
             streamer.cancelStreamingAndDeleteData(true)
             XCTAssertNotNil(videoFileURL, "No file URL")
             expectation.fulfill()
+            completion()
         } failure: { error in
             XCTFail(error.localizedDescription);
             expectation.fulfill()
+            completion()
         } selectFileToStream: { torrentNames, fileSizes in
             return 1; // 2 file
         }
-        // Wait 5 minutes
-        waitForExpectations(timeout: 60.0 * 5)
     }
 }
 
