@@ -131,7 +131,7 @@ using namespace libtorrent;
             if (ec) {
                 error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-1 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithCString:ec.message().c_str() encoding:NSUTF8StringEncoding]}];
             }
-            NSInteger index = [self selectedFileIndexInTorrentWithTorrentInfo:tp.ti];
+            int index = [self selectedFileIndexInTorrentWithTorrentInfo:tp.ti];
             MIN_PIECES = ((tp.ti->files().file_size(libtorrent::file_index_t(index)) * 0.03)/tp.ti->piece_length());
         } else {
             error = [[NSError alloc] initWithDomain:@"com.popcorntimetv.popcorntorrent.error" code:-2 userInfo:@{NSLocalizedDescriptionKey: [NSString localizedStringWithFormat:@"File doesn't exist at path: %@".localizedString, filePath]}];
@@ -227,11 +227,12 @@ using namespace libtorrent;
     auto torrent =  _torrentHandle;
     auto ti = torrent.torrent_file();
         
-        //find the torrent piece corresponding to the requested piece of the movie
+    //find the torrent piece corresponding to the requested piece of the movie
     auto index = file_index_t([self selectedFileIndexInTorrent:torrent]);
     int64_t fileSize = ti->files().file_size(index);
-    int64_t forwardRange = range.location + range.length;
-    peer_request request = ti->map_file(index, range.location, uint(range.length));
+    // int64_t forwardRange = range.length > fileSize ? fileSize - 1 : range.location + range.length;
+    int length = range.length > INT_MAX ? INT_MAX : int(range.length);
+    peer_request request = ti->map_file(index, range.location, length);
         
     //set first and last pieces
     auto startPiece = request.piece;
@@ -339,7 +340,7 @@ using namespace libtorrent;
     th.prioritize_pieces(piece_priorities);
     
     for (int i = 0; i < MIN_PIECES; i++) {
-        if (next_required_piece < lastFilePiece) {
+        if (next_required_piece <= lastFilePiece) {
             th.piece_priority(next_required_piece, top_priority);
             th.set_piece_deadline(next_required_piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
             required_pieces.push_back(next_required_piece);
@@ -498,7 +499,9 @@ using namespace libtorrent;
     // download first pieces
     MIN_PIECES = (ti->files().file_size(file_index) * 0.03) / ti->piece_length();
     MIN_PIECES = std::min(MIN_PIECES, 20);
+    NSLog(@"min pieces: %d", MIN_PIECES);
     piece_index_t first_piece = ti->map_file(file_index, 0, 0).piece;
+    NSLog(@"firstPiece: %d", (int)first_piece);
     for (int i = 0; i < MIN_PIECES; i++) {
         required_pieces.push_back(first_piece);
         first_piece++;
@@ -506,8 +509,10 @@ using namespace libtorrent;
     
     // download last pieces
     piece_index_t last_piece = ti->map_file(file_index, file_size - 1, 0).piece;
+    NSLog(@"lastPiece: %d", (int)last_piece);
     lastFilePiece = last_piece;
-    for (int i = 0; i < 10; i++) {
+    int maxEndPieces = std::min(MIN_PIECES, 10);
+    for (int i = 0; i < maxEndPieces; i++) {
         required_pieces.push_back(last_piece);
         last_piece--;
     }
@@ -515,7 +520,7 @@ using namespace libtorrent;
     // don't download intermediate pieces when streaming starts
     piece_index_t piece = first_piece;
     do {
-        th.piece_priority(piece, dont_download);
+        th.piece_priority(piece, low_priority);
         piece++;
     } while (piece <= last_piece);
     
@@ -554,6 +559,7 @@ using namespace libtorrent;
 }
 
 - (void)pieceFinishedAlert:(torrent_handle)th forPieceIndex:(piece_index_t)index {
+    NSLog(@"downloaded piece: %d", (int)index);
     _status = th.status();
     
     int requiredPiecesDownloaded = 0;

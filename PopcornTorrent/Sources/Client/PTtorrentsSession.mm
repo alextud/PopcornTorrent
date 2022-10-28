@@ -177,7 +177,7 @@ using namespace libtorrent;
         return th;
     }
     
-    // th.set_flags(libtorrent::torrent_flags::sequential_download);
+    th.set_flags(libtorrent::torrent_flags::sequential_download);
     th.set_max_connections(60);
     th.set_max_uploads(10);
     
