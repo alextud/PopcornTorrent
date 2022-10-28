@@ -183,6 +183,7 @@ using namespace libtorrent;
     
     // torrent exists, give it a new session, so there is no interference
     if (error && error.code == -2) {
+        error = nil;
         self.session = [[PTTorrentsSession alloc] init];
         self.deleteOnlyDownloadedFile = YES;
         PTTorrentStreamer *existing = [[PTTorrentsSession sharedSession] torrentStreamerForTorrentHandle:_torrentHandle];
