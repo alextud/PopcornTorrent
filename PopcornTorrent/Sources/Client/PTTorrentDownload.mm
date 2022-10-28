@@ -143,7 +143,7 @@ using namespace libtorrent;
         [weakSelf setTorrentStatus:status];
         
         if (downloadStatus == PTTorrentDownloadStatusFinished) {
-            [self cancelStreamingAndDeleteData:NO];
+            [weakSelf cancelStreamingAndDeleteData:NO];
         }
     } readyToPlay: {
         
@@ -156,11 +156,13 @@ using namespace libtorrent;
             [delegate downloadDidFail:weakSelf withError:error];
         }
     } selectFileToStream:^int(NSArray<NSString *> * _Nonnull torrentsAvailable, NSArray<NSNumber *> * _Nonnull fileSizes) {
-        NSInteger index = callback(torrentsAvailable, fileSizes);
+        int index = callback(torrentsAvailable, fileSizes);
         
-        NSMutableDictionary *copy = _mediaMetadata.mutableCopy;
+        NSMutableDictionary *copy = weakSelf.mediaMetadata.mutableCopy;
         copy[MPMediaItemPropertySelectedFileIndex] = @(index);
-        _mediaMetadata = copy;
+        weakSelf.mediaMetadata = copy;
+
+        [weakSelf save];
         
         return index;
     }];
@@ -205,7 +207,7 @@ using namespace libtorrent;
     } else {
         /// Torrent was in the middle of downloading and app was exited. Download has been loaded from disk and is now being resumed. Fetch torrent metadata instead of just resuming.
         [self startDownloadingFromFileOrMagnetLink:_mediaMetadata[MPMediaItemPropertyPathOrLink] selectFileTDownload:^int(NSArray<NSString *> * _Nonnull torrentsAvailable, NSArray<NSNumber *> * _Nonnull fileSizes) {
-            return [_mediaMetadata[MPMediaItemPropertySelectedFileIndex] integerValue];
+            return [_mediaMetadata[MPMediaItemPropertySelectedFileIndex] intValue];
         }];
         return [self setDownloadStatus:PTTorrentDownloadStatusProcessing];
     }
@@ -219,7 +221,9 @@ using namespace libtorrent;
 }
 
 - (BOOL)save {
-    NSString *filePath = [_savePath stringByAppendingPathComponent:@"Metadata.plist"];
+    NSString *index = _mediaMetadata[MPMediaItemPropertySelectedFileIndex] ? [_mediaMetadata[MPMediaItemPropertySelectedFileIndex] stringValue] : @"";
+    NSString *fileName = [NSString stringWithFormat:@"Metadata-file-%@.plist", index];
+    NSString *filePath = [_savePath stringByAppendingPathComponent:fileName];
     NSMutableDictionary *copy = _mediaMetadata.mutableCopy;
     [copy setObject:@(_downloadStatus) forKey:PTTorrentItemPropertyDownloadStatus];
     [copy setObject:@(_torrentStatus.totalProgress) forKey:PTTorrentItemPropertyTorrentProgress];
