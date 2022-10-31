@@ -80,36 +80,28 @@
     return mutableFileURLs;
 }
 
-- (void)applicationDidEnterBackground {
 #if TARGET_OS_IOS
+- (void)applicationDidEnterBackground {
     __block UIBackgroundTaskIdentifier backgroundTaskIdentifier = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
-        
         [[UIApplication sharedApplication] endBackgroundTask:backgroundTaskIdentifier];
-
         backgroundTaskIdentifier = UIBackgroundTaskInvalid;
     }];
-#endif
+
     
     __weak __typeof__(self) weakSelf = self;
     
     dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0);
     dispatch_async(queue, ^{
-        
         for (PTTorrentDownload *download in weakSelf.activeDownloads) {
             [download pause];
             [download save];
         }
-        
-        for (PTTorrentDownload *download in weakSelf.completedDownloads) {
-            [download save];
-        }
-#if TARGET_OS_IOS
+
         [[UIApplication sharedApplication] endBackgroundTask:backgroundTaskIdentifier];
-        
         backgroundTaskIdentifier = UIBackgroundTaskInvalid;
-#endif
     });
 }
+#endif
 
 - (void)applicationWillEnterForeground {
     for (PTTorrentDownload *download in _activeDownloads) {
