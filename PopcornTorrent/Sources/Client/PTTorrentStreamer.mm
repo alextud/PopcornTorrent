@@ -255,7 +255,7 @@ using namespace libtorrent;
     //set global variables
     firstPiece = startPiece;
     endPiece = finalPiece;
-    NSLog(@"new startPiece: %d", (int)startPiece);
+    NSLog(@"fast forwarding to new start piece: %d", (int)startPiece);
     
     //if we already have the requested part of the movie return immediately
     for(auto j = startPiece; j <= finalPiece; j++){
@@ -266,6 +266,7 @@ using namespace libtorrent;
         }
     }
     
+    NSLog(@"new start piece missing, downloading...");
     //take control of the array from all of the other threads that might be accessing it
     mtx.lock();
     required_pieces.clear(); //clear all the pieces we wanted to download previously
@@ -501,7 +502,7 @@ using namespace libtorrent;
     MIN_PIECES = std::min(MIN_PIECES, 20);
     NSLog(@"min pieces: %d", MIN_PIECES);
     piece_index_t first_piece = ti->map_file(file_index, 0, 0).piece;
-    NSLog(@"firstPiece: %d", (int)first_piece);
+    NSLog(@"first piece: %d", (int)first_piece);
     for (int i = 0; i < MIN_PIECES; i++) {
         required_pieces.push_back(first_piece);
         first_piece++;
@@ -509,9 +510,9 @@ using namespace libtorrent;
     
     // download last pieces
     piece_index_t last_piece = ti->map_file(file_index, file_size - 1, 0).piece;
-    NSLog(@"lastPiece: %d", (int)last_piece);
+    NSLog(@"last piece: %d", (int)last_piece);
     lastFilePiece = last_piece;
-    int maxEndPieces = std::min(MIN_PIECES, 10);
+    int maxEndPieces = MIN_PIECES <= 6 ? 1 : 2;
     for (int i = 0; i < maxEndPieces; i++) {
         required_pieces.push_back(last_piece);
         last_piece--;
