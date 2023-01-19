@@ -44,9 +44,37 @@ using namespace libtorrent;
 + (instancetype)sharedSession {
     static dispatch_once_t onceToken;
     static PTTorrentsSession *sharedSession;
+
+    static id backgroundToken;
+    static id activeToken;
+    static NSDate *lastDate;
+
     dispatch_once(&onceToken, ^{
         sharedSession = [[PTTorrentsSession alloc] init];
+
+        // FIX: torrents not starting after apple tv comes from sleep after a period of time
+        // workaround to create a new torrent session on tv, after a period of time
+        #if TARGET_OS_TV
+        backgroundToken = [[NSNotificationCenter defaultCenter] addObserverForName: UIApplicationDidEnterBackgroundNotification
+                                              object: nil
+                                              queue: nil
+                                              usingBlock:^(NSNotification *notification) {
+                                                lastDate = [[NSDate alloc] init];
+                                              }];
+
+        double backgroundDuration = 5 * 60; // 5 minutes
+        activeToken = [[NSNotificationCenter defaultCenter] addObserverForName: UIApplicationDidBecomeActiveNotification
+                                              object: nil
+                                              queue: nil
+                                              usingBlock:^(NSNotification *notification) {
+                                                if (lastDate && -[lastDate timeIntervalSinceNow] > backgroundDuration) {
+                                                    sharedSession = [[PTTorrentsSession alloc] init];
+                                                }
+                                                lastDate = nil;
+                                              }];
+        #endif
     });
+
     return sharedSession;
 }
 
