@@ -216,6 +216,7 @@ EGREP = @EGREP@
 ETAGS = @ETAGS@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
+FILECMD = @FILECMD@
 GREP = @GREP@
 HAVE_CXX11 = @HAVE_CXX11@
 HAVE_CXX14 = @HAVE_CXX14@
@@ -416,6 +417,7 @@ nobase_include_HEADERS = \
   lazy_entry.hpp               \
   link.hpp                     \
   linked_list.hpp              \
+  load_torrent.hpp             \
   lsd.hpp                      \
   magnet_uri.hpp               \
   natpmp.hpp                   \

@@ -288,7 +288,11 @@ namespace aux {
 		//
 		// Adding pieces while the torrent is being checked (i.e. in
 		// torrent_status::checking_files state) is not supported.
+		//
+		// The overload taking a ``std::vector<char>`` is not blocking, it will
+		// send the buffer to the main thread and return immediately.
 		void add_piece(piece_index_t piece, char const* data, add_piece_flags_t flags = {}) const;
+		void add_piece(piece_index_t piece, std::vector<char> data, add_piece_flags_t flags = {}) const;
 
 		// This function starts an asynchronous read operation of the specified
 		// piece from this torrent. You must have completed the download of the
@@ -633,8 +637,8 @@ namespace aux {
 		static constexpr resume_data_flags_t flush_disk_cache = 0_bit;
 
 		// the resume data will contain the metadata from the torrent file as
-		// well. This is default for any torrent that's added without a
-		// torrent file (such as a magnet link or a URL).
+		// well. This is useful for clients that don't keep .torrent files
+		// around separately, or for torrents that were added via a magnet link.
 		static constexpr resume_data_flags_t save_info_dict = 1_bit;
 
 		// if nothing significant has changed in the torrent since the last

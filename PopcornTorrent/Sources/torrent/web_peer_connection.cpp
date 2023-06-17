@@ -348,7 +348,7 @@ void web_peer_connection::write_request(peer_request const& r)
 	{
 		int request_offset = r.start + r.length - size;
 		pr.start = request_offset % piece_size;
-		pr.length = std::min(block_size, size);
+		pr.length = std::min(std::min(block_size, size), piece_size - pr.start);
 		pr.piece = piece_index_t(static_cast<int>(r.piece) + request_offset / piece_size);
 		m_requests.push_back(pr);
 
@@ -1170,9 +1170,10 @@ void web_peer_connection::maybe_harvest_piece()
 		, static_cast<int>(front_request.piece)
 		, front_request.start, front_request.length);
 #endif
+	peer_request const req = m_requests.front();
 	m_requests.pop_front();
 
-	incoming_piece(front_request, m_piece.data());
+	incoming_piece(req, m_piece.data());
 	m_piece.clear();
 }
 

@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2003-2018, Arvid Norberg
+Copyright (c) 2022, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,30 +30,41 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_VERSION_HPP_INCLUDED
-#define TORRENT_VERSION_HPP_INCLUDED
+#ifndef TORRENT_LOAD_TORRENT_HPP_INCLUDED
+#define TORRENT_LOAD_TORRENT_HPP_INCLUDED
 
+#include "libtorrent/add_torrent_params.hpp"
+#include "libtorrent/span.hpp"
+#include "libtorrent/bdecode.hpp"
+#include "libtorrent/torrent_info.hpp" // for load_torrent_limits
 #include "libtorrent/aux_/export.hpp"
-
-#define LIBTORRENT_VERSION_MAJOR 1
-#define LIBTORRENT_VERSION_MINOR 2
-#define LIBTORRENT_VERSION_TINY 19
-
-// the format of this version is: MMmmtt
-// M = Major version, m = minor version, t = tiny version
-#define LIBTORRENT_VERSION_NUM ((LIBTORRENT_VERSION_MAJOR * 10000) + (LIBTORRENT_VERSION_MINOR * 100) + LIBTORRENT_VERSION_TINY)
-
-#define LIBTORRENT_VERSION "1.2.19.0"
-#define LIBTORRENT_REVISION "e2d32cd44"
 
 namespace libtorrent {
 
-	// returns the libtorrent version as string form in this format:
-	// "<major>.<minor>.<tiny>.<tag>"
-	TORRENT_EXPORT char const* version();
+	// These functions load the content of a .torrent file into an
+	// add_torrent_params object.
+	// The immutable part of a torrent file (the info-dictionary) is stored in
+	// the ``ti`` field in the add_torrent_params object (as a torrent_info
+	// object).
+	// The returned object is suitable to be:
+	//
+	//   * added to a session via add_torrent() or async_add_torrent()
+	//   * saved as a .torrent_file via write_torrent_file()
+	//   * turned into a magnet link via make_magnet_uri()
+	TORRENT_EXPORT add_torrent_params load_torrent_file(
+		std::string const& filename, load_torrent_limits const& cfg);
+	TORRENT_EXPORT add_torrent_params load_torrent_file(
+		std::string const& filename);
+	TORRENT_EXPORT add_torrent_params load_torrent_buffer(
+		span<char const> buffer, load_torrent_limits const& cfg);
+	TORRENT_EXPORT add_torrent_params load_torrent_buffer(
+		span<char const> buffer);
+	TORRENT_EXPORT add_torrent_params load_torrent_parsed(
+		bdecode_node const& torrent_file, load_torrent_limits const& cfg);
+	TORRENT_EXPORT add_torrent_params load_torrent_parsed(
+		bdecode_node const& torrent_file);
 
 }
 
-namespace lt = libtorrent;
-
 #endif
+

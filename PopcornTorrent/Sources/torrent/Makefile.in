@@ -161,28 +161,29 @@ am__libtorrent_rasterbar_la_SOURCES_DIST = web_connection_base.cpp \
 	http_seed_connection.cpp http_stream.cpp \
 	http_tracker_connection.cpp i2p_stream.cpp identify_client.cpp \
 	instantiate_connection.cpp ip_filter.cpp ip_notifier.cpp \
-	ip_voter.cpp lazy_bdecode.cpp listen_socket_handle.cpp lsd.cpp \
-	magnet_uri.cpp merkle.cpp natpmp.cpp openssl.cpp parse_url.cpp \
-	part_file.cpp pe_crypto.cpp performance_counters.cpp \
-	peer_connection.cpp peer_connection_handle.cpp peer_class.cpp \
-	peer_class_set.cpp piece_picker.cpp platform_util.cpp \
-	packet_buffer.cpp proxy_base.cpp peer_list.cpp puff.cpp \
-	random.cpp receive_buffer.cpp read_resume_data.cpp \
-	write_resume_data.cpp request_blocks.cpp resolve_links.cpp \
-	resolver.cpp session.cpp session_call.cpp session_handle.cpp \
-	session_impl.cpp session_settings.cpp proxy_settings.cpp \
-	settings_pack.cpp sha1_hash.cpp smart_ban.cpp socket_io.cpp \
-	socket_type.cpp socks5_stream.cpp stat.cpp stat_cache.cpp \
-	storage.cpp storage_piece_set.cpp storage_utils.cpp \
-	session_stats.cpp string_util.cpp torrent.cpp \
-	torrent_handle.cpp torrent_info.cpp torrent_peer.cpp \
-	torrent_peer_allocator.cpp torrent_status.cpp time.cpp \
-	timestamp_history.cpp tracker_manager.cpp udp_socket.cpp \
-	udp_tracker_connection.cpp upnp.cpp ut_metadata.cpp ut_pex.cpp \
-	utf8.cpp utp_socket_manager.cpp utp_stream.cpp \
-	web_peer_connection.cpp xml_parse.cpp version.cpp \
-	file_progress.cpp ffs.cpp add_torrent_params.cpp peer_info.cpp \
-	stack_allocator.cpp sha1.cpp sha512.cpp kademlia/dht_state.cpp \
+	ip_voter.cpp lazy_bdecode.cpp listen_socket_handle.cpp \
+	load_torrent.cpp lsd.cpp magnet_uri.cpp merkle.cpp natpmp.cpp \
+	openssl.cpp parse_url.cpp part_file.cpp pe_crypto.cpp \
+	performance_counters.cpp peer_connection.cpp \
+	peer_connection_handle.cpp peer_class.cpp peer_class_set.cpp \
+	piece_picker.cpp platform_util.cpp packet_buffer.cpp \
+	proxy_base.cpp peer_list.cpp puff.cpp random.cpp \
+	receive_buffer.cpp read_resume_data.cpp write_resume_data.cpp \
+	request_blocks.cpp resolve_links.cpp resolver.cpp session.cpp \
+	session_call.cpp session_handle.cpp session_impl.cpp \
+	session_settings.cpp proxy_settings.cpp settings_pack.cpp \
+	sha1_hash.cpp smart_ban.cpp socket_io.cpp socket_type.cpp \
+	socks5_stream.cpp stat.cpp stat_cache.cpp storage.cpp \
+	storage_piece_set.cpp storage_utils.cpp session_stats.cpp \
+	string_util.cpp torrent.cpp torrent_handle.cpp \
+	torrent_info.cpp torrent_peer.cpp torrent_peer_allocator.cpp \
+	torrent_status.cpp time.cpp timestamp_history.cpp \
+	tracker_manager.cpp udp_socket.cpp udp_tracker_connection.cpp \
+	upnp.cpp ut_metadata.cpp ut_pex.cpp utf8.cpp \
+	utp_socket_manager.cpp utp_stream.cpp web_peer_connection.cpp \
+	xml_parse.cpp version.cpp file_progress.cpp ffs.cpp \
+	add_torrent_params.cpp peer_info.cpp stack_allocator.cpp \
+	sha1.cpp sha512.cpp kademlia/dht_state.cpp \
 	kademlia/dht_storage.cpp kademlia/dht_tracker.cpp \
 	kademlia/find_data.cpp kademlia/put_data.cpp kademlia/msg.cpp \
 	kademlia/node.cpp kademlia/node_entry.cpp kademlia/node_id.cpp \
@@ -280,6 +281,7 @@ am_libtorrent_rasterbar_la_OBJECTS =  \
 	libtorrent_rasterbar_la-ip_voter.lo \
 	libtorrent_rasterbar_la-lazy_bdecode.lo \
 	libtorrent_rasterbar_la-listen_socket_handle.lo \
+	libtorrent_rasterbar_la-load_torrent.lo \
 	libtorrent_rasterbar_la-lsd.lo \
 	libtorrent_rasterbar_la-magnet_uri.lo \
 	libtorrent_rasterbar_la-merkle.lo \
@@ -439,6 +441,7 @@ am__depfiles_remade = ../ed25519/src/$(DEPDIR)/libtorrent_rasterbar_la-add_scala
 	./$(DEPDIR)/libtorrent_rasterbar_la-ip_voter.Plo \
 	./$(DEPDIR)/libtorrent_rasterbar_la-lazy_bdecode.Plo \
 	./$(DEPDIR)/libtorrent_rasterbar_la-listen_socket_handle.Plo \
+	./$(DEPDIR)/libtorrent_rasterbar_la-load_torrent.Plo \
 	./$(DEPDIR)/libtorrent_rasterbar_la-lsd.Plo \
 	./$(DEPDIR)/libtorrent_rasterbar_la-magnet_uri.Plo \
 	./$(DEPDIR)/libtorrent_rasterbar_la-merkle.Plo \
@@ -614,6 +617,7 @@ EGREP = @EGREP@
 ETAGS = @ETAGS@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
+FILECMD = @FILECMD@
 GREP = @GREP@
 HAVE_CXX11 = @HAVE_CXX11@
 HAVE_CXX14 = @HAVE_CXX14@
@@ -831,6 +835,7 @@ libtorrent_rasterbar_la_SOURCES = \
   ip_voter.cpp                    \
   lazy_bdecode.cpp                \
   listen_socket_handle.cpp        \
+  load_torrent.cpp                \
   lsd.cpp                         \
   magnet_uri.cpp                  \
   merkle.cpp                      \
@@ -1134,6 +1139,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libtorrent_rasterbar_la-ip_voter.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libtorrent_rasterbar_la-lazy_bdecode.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libtorrent_rasterbar_la-listen_socket_handle.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libtorrent_rasterbar_la-load_torrent.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libtorrent_rasterbar_la-lsd.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libtorrent_rasterbar_la-magnet_uri.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libtorrent_rasterbar_la-merkle.Plo@am__quote@ # am--include-marker
@@ -1626,6 +1632,13 @@ libtorrent_rasterbar_la-listen_socket_handle.lo: listen_socket_handle.cpp
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='listen_socket_handle.cpp' object='libtorrent_rasterbar_la-listen_socket_handle.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libtorrent_rasterbar_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libtorrent_rasterbar_la-listen_socket_handle.lo `test -f 'listen_socket_handle.cpp' || echo '$(srcdir)/'`listen_socket_handle.cpp
+
+libtorrent_rasterbar_la-load_torrent.lo: load_torrent.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libtorrent_rasterbar_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libtorrent_rasterbar_la-load_torrent.lo -MD -MP -MF $(DEPDIR)/libtorrent_rasterbar_la-load_torrent.Tpo -c -o libtorrent_rasterbar_la-load_torrent.lo `test -f 'load_torrent.cpp' || echo '$(srcdir)/'`load_torrent.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libtorrent_rasterbar_la-load_torrent.Tpo $(DEPDIR)/libtorrent_rasterbar_la-load_torrent.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='load_torrent.cpp' object='libtorrent_rasterbar_la-load_torrent.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libtorrent_rasterbar_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libtorrent_rasterbar_la-load_torrent.lo `test -f 'load_torrent.cpp' || echo '$(srcdir)/'`load_torrent.cpp
 
 libtorrent_rasterbar_la-lsd.lo: lsd.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libtorrent_rasterbar_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libtorrent_rasterbar_la-lsd.lo -MD -MP -MF $(DEPDIR)/libtorrent_rasterbar_la-lsd.Tpo -c -o libtorrent_rasterbar_la-lsd.lo `test -f 'lsd.cpp' || echo '$(srcdir)/'`lsd.cpp
@@ -2536,6 +2549,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-ip_voter.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-lazy_bdecode.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-listen_socket_handle.Plo
+	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-load_torrent.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-lsd.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-magnet_uri.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-merkle.Plo
@@ -2735,6 +2749,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-ip_voter.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-lazy_bdecode.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-listen_socket_handle.Plo
+	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-load_torrent.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-lsd.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-magnet_uri.Plo
 	-rm -f ./$(DEPDIR)/libtorrent_rasterbar_la-merkle.Plo
