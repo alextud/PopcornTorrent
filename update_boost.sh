@@ -12,7 +12,7 @@ clean() {
 
 download() {
     curl -L -o ${BOOST_TARBALL} \
-        "https://boostorg.jfrog.io/artifactory/main/release/1.79.0/source/boost_1_79_0.tar.gz"
+        "https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.gz"
 }
 
 extract() {
