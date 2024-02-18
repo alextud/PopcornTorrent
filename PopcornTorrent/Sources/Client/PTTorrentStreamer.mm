@@ -215,8 +215,10 @@ using namespace libtorrent;
 }
 
 - (void)handleTorrentError:(NSError *)error {
-    if (self.failureBlock) self.failureBlock(error);
-    [self cancelStreamingAndDeleteData:NO];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.failureBlock) self.failureBlock(error);
+        [self cancelStreamingAndDeleteData:NO];
+    });
 }
 
 #pragma mark - Fast Forward

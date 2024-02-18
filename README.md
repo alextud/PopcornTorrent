@@ -15,6 +15,6 @@ Torrent client for tvOS / iOS / macOS implemented with `libtorrent`.
 
 ## Dependecies
 
-- boost: Version 1.77.0 (https://www.boost.org/users/download/)
-- libtorrent: Version 1.2.18 (https://github.com/arvidn/libtorrent/tags)
+- boost: Version 1.82.0 (https://www.boost.org/users/download/)
+- libtorrent: Version 1.2.19 (https://github.com/arvidn/libtorrent/tags)
 - edit / run `update_boost.sh` or `update_torrent.sh` to update dependencies version
