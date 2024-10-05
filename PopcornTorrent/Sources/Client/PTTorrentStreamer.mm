@@ -327,7 +327,8 @@ using namespace libtorrent;
     if (firstPiece != piece_index_t(-1)) {
         next_required_piece = firstPiece;
     } else if (required_pieces.size() > 0) {
-        next_required_piece = required_pieces[MIN_PIECES - 1];
+        auto next_piece = std::min(MIN_PIECES, int(required_pieces.size()));
+        next_required_piece = required_pieces[next_piece - 1];
         next_required_piece++;
     }
     
