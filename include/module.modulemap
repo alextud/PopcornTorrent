@@ -1,0 +1,27 @@
+module LibtorrentCXX [system] {
+    header "libtorrent/session.hpp"
+    header "libtorrent/torrent_handle.hpp"
+    header "libtorrent/torrent_info.hpp"
+    header "libtorrent/torrent_status.hpp"
+    header "libtorrent/add_torrent_params.hpp"
+    header "libtorrent/magnet_uri.hpp"
+    header "libtorrent/alert.hpp"
+    header "libtorrent/alert_types.hpp"
+    header "libtorrent/bencode.hpp"
+    header "libtorrent/read_resume_data.hpp"
+    header "libtorrent/write_resume_data.hpp"
+    header "libtorrent/extensions/smart_ban.hpp"
+    header "libtorrent/extensions/ut_metadata.hpp"
+    header "libtorrent/hex.hpp"
+    header "libtorrent/error_code.hpp"
+    header "libtorrent/settings_pack.hpp"
+    header "libtorrent/file_storage.hpp"
+
+    requires cplusplus
+    export *
+}
+
+module Boost [system] {
+    requires cplusplus
+    export *
+}

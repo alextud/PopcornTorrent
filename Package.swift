@@ -1,4 +1,4 @@
-// swift-tools-version:5.4.0
+// swift-tools-version:5.9
 import PackageDescription
 
 let package = Package(
@@ -18,7 +18,24 @@ let package = Package(
             name: "PopcornTorrent",
             dependencies: ["GCDWebServer"],
             path: "PopcornTorrent/Sources",
-            exclude: [],
+            exclude: [
+                // Exclude old Objective-C++ wrapper files (replaced by Swift)
+                "Client/PTTorrentsSession.mm",
+                "Client/PTTorrentStreamer.mm",
+                "Client/PTTorrentDownload.mm",
+                "Client/PTTorrentDownloadManager.m",
+                "Client/PTSize.m",
+                "Client/PTTorrentsSession.h",
+                "Client/PTTorrentStreamer.h",
+                "Client/PTTorrentDownload.h",
+                "Client/PTTorrentDownloadManager.h",
+                "Client/PTSize.h",
+                "Client/PTTorrentsSession+Protected.h",
+                "Client/PTTorrentStreamer+Protected.h",
+                "Client/PTTorrentStatus.h",
+                "Client/PTTorrentDownloadStatus.h",
+                "Client/PTTorrentDownloadManagerListener.h",
+            ],
             cxxSettings: [
                 .define("TARGET_OS_IOS", .when(platforms: [.iOS])),
                 .define("TARGET_OS_TV", .when(platforms: [.tvOS])),
@@ -26,6 +43,10 @@ let package = Package(
                 .define("BOOST_ASIO_HASH_MAP_BUCKETS", to: "1021"),
                 .define("TORRENT_ABI_VERSION", to: "3"),
                 .headerSearchPath("../../include/"),
+                .headerSearchPath("Client/"),
+            ],
+            swiftSettings: [
+                .interoperabilityMode(.Cxx)
             ],
             linkerSettings: [
                 .linkedFramework("SystemConfiguration")
