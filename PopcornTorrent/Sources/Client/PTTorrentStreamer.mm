@@ -346,7 +346,7 @@ using namespace libtorrent;
     for (int i = 0; i < MIN_PIECES; i++) {
         if (next_required_piece <= lastFilePiece) {
             th.piece_priority(next_required_piece, top_priority);
-            th.set_piece_deadline(next_required_piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
+            th.set_piece_deadline(next_required_piece, PIECE_DEADLINE_MILLIS);
             required_pieces.push_back(next_required_piece);
             next_required_piece++;
         }
@@ -531,7 +531,7 @@ using namespace libtorrent;
     th.clear_piece_deadlines();
     for (piece_index_t piece : required_pieces) {
         th.piece_priority(piece, top_priority);
-        th.set_piece_deadline(piece, PIECE_DEADLINE_MILLIS, torrent_handle::alert_when_available);
+        th.set_piece_deadline(piece, PIECE_DEADLINE_MILLIS);
     }
 }
 
